@@ -69,6 +69,8 @@ require([
     var filterUser = document.getElementById('user-id');
     var filterButton = document.getElementById('filter-button');
 
+    var collection = document.getElementById('leaderboard');
+
     // Set up the second feature layer, which shows the line where someone walked.
     fl_tracks = new FeatureLayer({
       url:
@@ -409,25 +411,6 @@ require([
       return color;
     }
 
-    /*
-    function queryTrajectories(userId, trackIds, tRenderer) {
-      console.log('TCL: queryTrajectories -> trackIds', trackIds);
-      var sql = 'user_id =' + userId;
-      if (trackIds.length > 0) {
-        sql += ' AND track_id IN (';
-        for (let i = 0; i < trackIds.length; i++) {
-          if (i === trackIds.length - 1) sql += trackIds[i] + ')';
-          else sql += trackIds[i] + ',';
-        }
-      }
-      console.log('TCL: queryTrajectories -> sql', sql);
-  
-      fl_trajectories.definitionExpression = sql;
-      fl_trajectories.renderer = tRenderer;
-      if (!fl_trajectories.visible) fl_trajectories.visible = true;
-    }
-    */
-
     filterUser.addEventListener('change', () => {
       console.log('select changed');
       userId = event.target.value;
@@ -435,6 +418,7 @@ require([
     });
 
     slider.noUiSlider.on('change', function (values, handle) {
+      console.log('on slider change');
       if (handle == 0) {
         minDurationValue = values[handle];
       } else {
@@ -447,20 +431,6 @@ require([
       console.log('filter button clicked');
       userId = filterUser.value;
       queryTracks(userId, minDurationValue, maxDurationValue);
-      /*
-      console.log('TCL: maxDuration.text', maxDuration.value);
-      console.log('TCL: minDuration.text', minDuration.value);
-      if (parseInt(maxDuration.value) >= parseInt(minDuration.value)) {
-        queryTracks(userId, minDuration.value, maxDuration.value);
-      } else {
-        filterButton.disabled = true;
-        fl_trajectories.visible = false;
-        graphicsLayer.graphics = [];
-        M.toast({
-          html: 'Invalid Input - min duration larger than max duration'
-        });
-      }
-      */
     });
 
     // add legend
@@ -474,76 +444,7 @@ require([
     });
 
     view.ui.add(legend, 'bottom-left');
-    /*
-    fl_trajectories
-      .load()
-      .then(() => {
-        const query = {
-          where: '1=1',
-          outFields: ['*'],
-          returnGeometry: true
-        };
-        fl_trajectories
-          .queryFeatures(query)
-          .then(result => {
-            console.log(result.features.length);
-            var data = result.features;
-            var symbol1 = new SimpleMarkerSymbol({
-              color: [115, 192, 91],
-              outline: null,
-              size: 12
-            });
-  
-            var symbol2 = new SimpleMarkerSymbol({
-              color: [255, 154, 8],
-              outline: null,
-              size: 12
-            });
-  
-            var symbol3 = new SimpleMarkerSymbol({
-              color: [255, 73, 0],
-              outline: null,
-              size: 12
-            });
-  
-            
-  
-            data.forEach(item => {
-              console.log(item.attributes.user_id, item.attributes.track_id);
-              var speed = item.attributes['speed'];
-              if (speed >= 0 && speed < 500) {
-                var g = new Graphic({
-                  geometry: item.geometry,
-                  // attributes: item.attributes,
-                  symbol: symbol1
-                });
-                graphicsLayer.graphics.add(g);
-              } else if (speed >= 500 && speed < 520) {
-                var g = new Graphic({
-                  geometry: item.geometry,
-                  // attributes: item.attributes,
-                  symbol: symbol2
-                });
-                graphicsLayer.graphics.add(g);
-              } else {
-                var g = new Graphic({
-                  geometry: item.geometry,
-                  // attributes: item.attributes,
-                  symbol: symbol3
-                });
-                graphicsLayer.graphics.add(g);
-              }
-            });
-            
-          })
-          .catch(err => {
-            console.error(err);
-          });
-      })
-      .catch(err => {
-        console.log('failed to load trajectory layers: ', err);
-      });
-  */
+
     var distanceSum = {
       onStatisticField: 'Shape__Length', // length
       outStatisticFieldName: 'total_length',
@@ -574,10 +475,67 @@ require([
             stats.total_length * 10 + stats.total_duration
           );
         });
+
+        var leaderboard = users.map(user => {
+          return [user.attributes.user_id, user.attributes.total_length, user.attributes.total_duration, user.attributes.total_length * 10 + user.attributes.total_duration];
+        })
+
+        // sort leaderboard by score
+        leaderboard.sort(function (a, b) {
+          return b[3] - a[3];
+        });
+
+        console.log("TCL: leaderboard AFTER SORT", leaderboard)
+
+        populateLeaderboard(leaderboard);
+
       })
       .catch(err => {
         console.error(err);
       });
+
+    function populateLeaderboard(leaderboard) {
+      if (leaderboard) {
+        leaderboard.forEach(entry => {
+          console.log("TCL: populateLeaderboard -> entry", entry)
+          var li = document.createElement('li');
+          li.className = "collection-item avatar";
+          var img = document.createElement('img');
+          img.src = "https://source.unsplash.com/50x50/?friends/" + (leaderboard.indexOf(entry) + 1);
+          img.className = "circle responsive-img";
+          li.appendChild(img);
+          var span = document.createElement('span');
+          span.className = "title";
+          span.innerHTML = "User " + entry[0];
+          li.appendChild(span);
+          var p1 = document.createElement('p');
+          p1.innerHTML = "Total Distance: " + parseFloat(entry[1]).toFixed(2);
+          li.appendChild(p1);
+          var p2 = document.createElement('p');
+          p2.innerHTML = "Total Duration: " + entry[2];
+          li.appendChild(p2);
+          var div = document.createElement('div');
+          div.className = "secondary-content";
+          var p3 = document.createElement('p');
+          p3.innerHTML = parseFloat(entry[3]).toFixed(2);
+          p3.className = "flow-text";
+          div.appendChild(p3);
+          var rank = document.createElement('h6');
+          rank.innerHTML = "RANK " + (leaderboard.indexOf(entry) + 1);
+          rank.className = "right-align";
+          div.appendChild(rank);
+          li.appendChild(div);
+          collection.appendChild(li);
+          console.log("TCL: populateLeaderboard -> collection", collection)
+
+        });
+      }
+      else {
+        M.toast({
+          html: 'No track features uploaded'
+        });
+      }
+    }
 
     function findStartEnd(start_coord, end_coord, spatial_reference) {
       var currentPoi = webMercatorUtils.lngLatToXY(

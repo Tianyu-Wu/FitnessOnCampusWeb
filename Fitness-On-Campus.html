@@ -24,7 +24,7 @@
 </head>
 
 <body>
-  <div id="filter" class="section section-filter">
+  <div id="filter" class="section section-filter container">
     <div class="row">
       <div id="filter-div" class="input-field col s12 m6">
         <select id="user-id">
@@ -44,14 +44,18 @@
       <div class="col s6 m3 right-align">
         <label id="right-label" for="slider"></label>
       </div>
-
     </div>
-
-
     <a id="filter-button" class="waves-effect waves-light btn">filter</a>
   </div>
   <!-- The main view where we put the map. -->
-  <div class="section section-map" id="viewDiv"></div>
+  <div class="section section-map container" id="viewDiv"></div>
+
+  <div class="section section-leaderboard container">
+    <h3 class="center-align">LeaderBoard</h3>
+    <ul id="leaderboard" class="collection">
+    </ul>
+  </div>
+
 
   <!-- JQuery -->
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
