@@ -1,83 +1,135 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="initial-scale=1, maximum-scale=1, user-scalable=no">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="initial-scale=1, maximum-scale=1, user-scalable=no"
+    />
     <title>Fitness On Campus Track Sharing</title>
 
     <!-- Load the ArcGIS JavaScript SDK. -->
-    <link rel="stylesheet" href="https://js.arcgis.com/4.11/esri/css/main.css">
-    <script src="https://js.arcgis.com/4.11/"></script>
+    <link
+      rel="stylesheet"
+      href="https://js.arcgis.com/4.11/esri/css/main.css"
+    />
 
     <!-- Add some (minimal) styling to the website. -->
-    <style>
-        html, body, #viewDiv {
-            padding: 0;
-            margin: 0;
-            height: 100%;
-            width: 100%;
+    <link rel="stylesheet" href="css/main.css" />
+
+    <!--Import Google Icon Font-->
+    <link
+      href="https://fonts.googleapis.com/icon?family=Material+Icons"
+      rel="stylesheet"
+    />
+    <!--Import materialize.css-->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css"
+    />
+    <!--Let browser know website is optimized for mobile-->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Import nouislider -->
+    <link rel="stylesheet" href="extras/noUiSlider/nouislider.css" />
+  </head>
+  <body>
+    <div id="filter" class="section section-filter">
+      <div class="row">
+        <div id="filter-div" class="input-field col s12 m6">
+          <select id="user-id">
+            <option value="" disabled selected>Choose User ID</option>
+          </select>
+          <label>Filter by User ID</label>
+        </div>
+        <div class="input-field col s12 m3">
+          <label>Filter by Duration</label>
+          <input id="min-duration" type="number" placeholder="Min Duration" />
+        </div>
+
+        <div class="input-field col s12 m3">
+          <input id="max-duration" type="number" placeholder="Max Duration" />
+        </div>
+      </div>
+
+      <div class="row">
+        <div id="slider" class="col s12 m6"></div>
+      </div>
+      <a id="filter-button" class="waves-effect waves-light btn">filter</a>
+    </div>
+    <!-- The main view where we put the map. -->
+    <div class="section section-map" id="viewDiv"></div>
+
+    <!-- JQuery -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+
+    <!-- JS for materlizecss styling -->
+    <!--JavaScript at end of body for optimized loading-->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+
+    <!-- nouislider -->
+    <script src="extras/noUiSlider/nouislider.js"></script>
+    <script src="extras/noUiSlider/nouislider.min.js"></script>
+
+    <script src="https://js.arcgis.com/4.11/"></script>
+
+    <!-- Load the js for the map -->
+    <script src="js/main.js"></script>
+    <!-- <script src="js/test.js"></script> -->
+
+    <script>
+      // initialize select
+      document.addEventListener('DOMContentLoaded', function() {
+        var elems = document.querySelectorAll('select');
+        var instances = M.FormSelect.init(elems);
+      });
+
+      // check whethere minDuration and maxDuration are validate
+      var minDuration = document.getElementById('min-duration');
+      var maxDuration = document.getElementById('max-duration');
+      minDuration.addEventListener(
+        'change',
+        checkInput(minDuration, maxDuration)
+      );
+      maxDuration.addEventListener(
+        'change',
+        checkInput(minDuration, maxDuration)
+      );
+
+      function checkInput(val1, val2) {
+        if (parseInt(val1.value) > parseInt(val2.value)) {
+          M.toast({
+            html: 'Invalid Input - min duration larger than max duration'
+          });
         }
-    </style>
-</head>
-<body>
+      }
 
-<!-- The main view where we put the map. -->
-<div id="viewDiv"></div>
+      var slider = document.getElementById('slider');
+      noUiSlider.create(slider, {
+        start: [0, 100],
+        connect: true,
+        step: 1,
+        orientation: 'horizontal', // 'horizontal' or 'vertical'
+        range: {
+          min: 0,
+          max: 100
+        },
+        format: wNumb({
+          decimals: 0
+        })
+      });
 
-<script>
-    // ArcGIS uses requirejs to manage libraries and dependencies. We load some libraries related to
-    // feature layers and maps. Use this html file by visiting
-    // http://host:port/mobile-gis/?track_id=0&user_id=0 (replace host with 127.0.0.1 and the port for
-    // example with 5000 for testing).
-    require(["esri/Map",
-        "esri/views/MapView",
-        "esri/layers/FeatureLayer",
-        "esri/tasks/support/Query",
-        "dojo/domReady!"], function (Map, MapView, FeatureLayer, Query) {
-        var map = new Map({
-            basemap: "dark-gray-vector"
-        });
+      console.log(slider);
 
-        // Here we retrieve URL parameters (the parts in the URL after the ? sign).
-        var url = new URL(window.location.href);
-        var trackId = url.searchParams.get("track_id");
-        var userId = url.searchParams.get("user_id");
-        console.log("Retrieving track " + trackId + " for user " + userId + ".");
-        var queryString = "track_id=" + trackId + " AND user_id=" + userId;
-
-        var view = new MapView({
-            container: "viewDiv",  // This is a reference to the DOM node that contains the map view.
-            map: map
-        });
-
-        // Set up the first feature layer, the points where someone collected treasures.
-        const fl_trajectories = new FeatureLayer({
-            url: "https://services1.arcgis.com/i9MtZ1vtgD3gTnyL/arcgis/rest/services/trajectories/FeatureServer/0"
-        });
-        // We use the above defined query string to restrict the shown features.
-        fl_trajectories.definitionExpression = queryString;
-        map.add(fl_trajectories);
-
-        // Set up the second feature layer, which shows the line where someone walked.
-            url: "https://services1.arcgis.com/i9MtZ1vtgD3gTnyL/arcgis/rest/services/tracks/FeatureServer/0"
-        const fl_tracks = new FeatureLayer({
-        });
-        fl_tracks.definitionExpression = queryString;
-        map.add(fl_tracks);
-
-        // Finally, we want to zoom to the respective line (but only if the query actually retreived one).
-        const query = new Query();
-        query.where = queryString;
-        fl_tracks.queryFeatureCount(query).then(function (numResults) {
-            if (numResults > 0) {
-                fl_tracks.when(function () {
-                    return fl_tracks.queryExtent();
-                }).then(function (response) {
-                    view.goTo(response.extent);
-                });
-            }
-        });
-    });
-</script>
-</body>
+      // initialize dropdown
+      document.addEventListener('DOMContentLoaded', function() {
+        var elems = document.querySelectorAll('.dropdown-trigger');
+        var options = {
+          alignment: 'right',
+          coverTrigger: false
+        };
+        var instances = M.Dropdown.init(elems, options);
+      });
+    </script>
+  </body>
 </html>

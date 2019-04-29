@@ -1,0 +1,630 @@
+// ArcGIS uses requirejs to manage libraries and dependencies. We load some libraries related to
+// feature layers and maps. Use this html file by visiting
+// http://host:port/mobile-gis/?track_id=0&user_id=0 (replace host with 127.0.0.1 and the port for
+// example with 5000 for testing).
+let fl_trajectories;
+let fl_tracks;
+let polyline;
+let graphicsLayer;
+
+const text =
+  '{ "poi" : [' +
+  '{ "name":"HIL Building" , "id":"POI1" , "latitude": 47.408303, "longitude": 8.5073332},' +
+  '{ "name":"Food Market" , "id":"POI2" , "latitude": 47.407757, "longitude": 8.5080608},' +
+  '{ "name":"Fusion" , "id":"POI3" , "latitude": 47.407896, "longitude": 8.507917},' +
+  '{ "name":"ASVZ" , "id":"POI4" , "latitude": 47.406734, "longitude": 8.510735},' +
+  '{ "name":"Bikes" , "id":"POI5" , "latitude": 47.407856, "longitude": 8.506630} ]}';
+
+const poi = JSON.parse(text).poi;
+console.log('TCL: poi', poi);
+
+require([
+  'esri/Map',
+  'esri/views/MapView',
+  'esri/layers/FeatureLayer',
+  'esri/layers/GraphicsLayer',
+  'esri/tasks/support/Query',
+  'esri/Graphic',
+  'esri/geometry/Point',
+  'esri/geometry/Polyline',
+  'esri/symbols/SimpleMarkerSymbol',
+  'esri/symbols/SimpleLineSymbol',
+  'esri/widgets/Legend',
+  'esri/geometry/geometryEngine',
+  'esri/geometry/support/webMercatorUtils',
+  'esri/renderers/UniqueValueRenderer',
+  'dojo/domReady!'
+], function(
+  Map,
+  MapView,
+  FeatureLayer,
+  GraphicsLayer,
+  Query,
+  Graphic,
+  Point,
+  Polyline,
+  SimpleMarkerSymbol,
+  SimpleLineSymbol,
+  Legend,
+  geometryEngine,
+  webMercatorUtils,
+  UniqueValueRenderer
+) {
+  // Here we retrieve URL parameters (the parts in the URL after the ? sign).
+  var url = new URL(window.location.href);
+  var trackId = url.searchParams.get('track_id');
+  var userId = url.searchParams.get('user_id');
+  console.log('Retrieving track ' + trackId + ' for user ' + userId + '.');
+  // var queryString = 'track_id=' + trackId + ' AND user_id=' + userId;
+  var queryString = 'track_id=0 and user_id=1';
+  var duration = [];
+
+  var minDuration = document.getElementById('min-duration');
+  var maxDuration = document.getElementById('max-duration');
+
+  var filterUser = document.getElementById('user-id');
+  var filterButton = document.getElementById('filter-button');
+
+  // Set up the second feature layer, which shows the line where someone walked.
+  fl_tracks = new FeatureLayer({
+    url:
+      'https://services1.arcgis.com/i9MtZ1vtgD3gTnyL/arcgis/rest/services/tracks/FeatureServer/0',
+    visible: false
+  });
+
+  // Set up the first feature layer, the points where someone collected treasures.
+  fl_trajectories = new FeatureLayer({
+    url:
+      'https://services1.arcgis.com/i9MtZ1vtgD3gTnyL/arcgis/rest/services/trajectories/FeatureServer/0',
+    visible: false
+  });
+
+  // Set up graphicLayer for displaying filtered tracks
+  graphicsLayer = new GraphicsLayer();
+
+  var map = new Map({
+    basemap: 'osm',
+    layers: [fl_tracks, fl_trajectories, graphicsLayer]
+  });
+
+  var view = new MapView({
+    container: 'viewDiv', // This is a reference to the DOM node that contains the map view.
+    map: map,
+    // set the center of view to honngerberg with a zoom level of 18
+    center: [8.507392, 47.408445],
+    zoom: 18
+  });
+
+  // view.ui.add('filter', 'top-right');
+
+  // We use the above defined query string to restrict the shown features.
+  console.log('TCL: fl_trajectories', fl_trajectories);
+  fl_trajectories.definitionExpression = queryString;
+  map.add(fl_trajectories);
+
+  view
+    .when(() => {
+      console.log('view is ready');
+      return fl_tracks.when(() => {
+        console.log('tracks layer is ready');
+        var groupByUserId = {
+          onStatisticField: 'user_id',
+          outStatisticFieldName: 'number of tracks',
+          statisticType: 'count'
+        };
+
+        var queryUserId = fl_tracks.createQuery();
+        queryUserId.outStatistics = groupByUserId;
+        queryUserId.groupByFieldsForStatistics = ['user_id'];
+
+        return fl_tracks.queryFeatures(queryUserId);
+      });
+    })
+    .then(getUserId)
+    .then(addToFilter)
+    .catch(err => {
+      console.error(err);
+    });
+
+  function getUserId(result) {
+    var features = result.features;
+    console.log('TCL: getUserId -> features', features);
+
+    var userIds = features.map(feature => {
+      return feature.attributes.user_id;
+    });
+    return userIds;
+  }
+
+  function addToFilter(userIds) {
+    console.log('add user_ids to filter');
+    userIds.sort();
+    userIds.forEach(userId => {
+      console.log('TCL: addToFilter -> userId', userId);
+      var option = document.createElement('option');
+      option.text = userId;
+      filterUser.add(option);
+      M.FormSelect.init(filterUser);
+      console.log('TCL: addToFilter -> filterUser', filterUser);
+    });
+    console.log('TCL: addToFilter -> filterUser.value', filterUser.value);
+    userId = filterUser.value;
+    return queryTracks(userId, duration);
+  }
+
+  function queryTracks(userId, minDurationValue, maxDurationValue) {
+    // clear previous results
+    graphicsLayer.graphics = [];
+    fl_trajectories.visible = false;
+    console.log('query tracks');
+
+    const query = {
+      outFields: ['*'],
+      returnGeometry: true
+    };
+    var where = '1=1';
+    if (userId) {
+      where = 'user_id = ' + userId;
+      if (minDurationValue) {
+        where += 'AND duration >= ' + minDurationValue;
+      }
+      if (maxDurationValue) {
+        where += 'AND duration <= ' + maxDurationValue;
+      }
+    } else if (maxDurationValue) {
+      where = 'duration >= ' + minDurationValue;
+      if (maxDurationValue) {
+        where += 'AND duration <= ' + maxDurationValue;
+      }
+    } else if (maxDurationValue) {
+      where = 'duration <= ' + maxDurationValue;
+    }
+
+    query.where = where;
+    console.log('TCL: queryTracks -> where', where);
+
+    fl_tracks
+      .queryFeatures(query)
+      .then(result => {
+        console.log('TCL: result TRACKS', result.features.length);
+        var features = result.features;
+
+        var result = new Array();
+        features.forEach(feature => {
+          if (feature.geometry) {
+            var id = feature.attributes.user_id;
+            var track = feature.attributes.track_id;
+            result.push({ user_id: id, track_id: track });
+            colorCodeTracks(feature);
+          }
+        });
+
+        if (result.length == 0) {
+          M.toast({
+            html: 'No reasonable track features found'
+          });
+        } else {
+          var resultMap = organizeResults(result);
+          console.log('TCL: queryTracks -> resultMap', resultMap);
+          queryTrajectories(resultMap);
+        }
+        /*
+        features.forEach(item => {
+          console.log('TCL: item', item.toJSON());
+
+          if (item.geometry) {
+            flag = 1;
+            trackIds.push(item.attributes.track_id);
+            tRenderer.addUniqueValueInfo({
+              value: item.attributes.track_id,
+              symbol: {
+                type: 'simple-marker', // autocasts as new SimpleFillSymbol()
+                size: 5,
+                color: randomColor(),
+                outline: null
+              }
+            });
+          }
+        });
+        if (!flag) {
+        } else {
+          // queryTrajectories(userId, trackIds, tRenderer);
+        }
+        */
+      })
+      .catch(err => {
+        console.error(err);
+      });
+  }
+
+  function organizeResults(result) {
+    var resultMap = new Array();
+    result.forEach(item => {
+      var existing = resultMap.filter(function(v, i) {
+        return v.user_id == item.user_id;
+      });
+      if (existing.length) {
+        var existingIndex = resultMap.indexOf(existing[0]);
+        resultMap[existingIndex].track_id = resultMap[
+          existingIndex
+        ].track_id.concat(item.track_id);
+      } else {
+        if (typeof item.track_id == 'number') item.track_id = [item.track_id];
+        resultMap.push(item);
+      }
+    });
+
+    // ids.forEach((id, i) => {
+    //   resultMap.id = result[i];
+    // });
+    console.log('TCL: queryTracks -> result', result);
+    // console.log('TCL: queryTracks -> resultMap', resultMap);
+    return resultMap;
+  }
+
+  function queryTrajectories(resultMap) {
+    console.log('query trajectories');
+    // construct sql query and renderer
+    var tRenderer = new UniqueValueRenderer();
+    var sql = '';
+    if (resultMap.length == 1) {
+      // only one user_id
+      // construct sql that combines conditions on user_id and tracks
+      sql = combineQueryWithUserTrack(resultMap[0]);
+      // create uniqueValueRenderer for trajectory on field track_id
+      tRenderer.field = 'track_id';
+      var tracks = resultMap[0].track_id;
+      tracks.forEach(track => {
+        tRenderer.addUniqueValueInfo({
+          value: track,
+          symbol: {
+            type: 'simple-marker', // autocasts as new SimpleFillSymbol()
+            size: 5,
+            color: randomColor(),
+            outline: null
+          }
+        });
+      });
+    } else {
+      // multiple user_ids -- create uniqueValueRenderer for trajectory on field user_id
+      tRenderer.field = 'user_id';
+      for (let i = 0; i < resultMap.length; i++) {
+        const entry = resultMap[i];
+        sql += combineQueryWithUserTrack(entry);
+        if (i != resultMap.length - 1) {
+          sql += ' OR ';
+        }
+        tRenderer.addUniqueValueInfo({
+          value: entry.user_id,
+          symbol: {
+            type: 'simple-marker', // autocasts as new SimpleFillSymbol()
+            size: 5,
+            color: randomColor(),
+            outline: null
+          }
+        });
+      }
+    }
+
+    console.log('TCL: queryTrajectories -> sql', sql);
+
+    // query trajectories based on constructed sql and render the layer with defined tRenderer
+    fl_trajectories.definitionExpression = sql;
+    fl_trajectories.renderer = tRenderer;
+    // display query result
+    if (!fl_trajectories.visible) fl_trajectories.visible = true;
+  }
+
+  function combineQueryWithUserTrack(result) {
+    var sql = '(user_id = ' + result.user_id + ' AND track_id IN (';
+    var trackIds = result.track_id;
+    for (let i = 0; i < trackIds.length; i++) {
+      if (i === trackIds.length - 1) sql += trackIds[i] + '))';
+      else sql += trackIds[i] + ',';
+    }
+    return sql;
+  }
+
+  function randomColor() {
+    var letters = '0123456789ABCDEF';
+    var color = '#';
+    for (var i = 0; i < 6; i++) {
+      color += letters[Math.floor(Math.random() * 16)];
+    }
+    return color;
+  }
+
+  /*
+  function queryTrajectories(userId, trackIds, tRenderer) {
+    console.log('TCL: queryTrajectories -> trackIds', trackIds);
+    var sql = 'user_id =' + userId;
+    if (trackIds.length > 0) {
+      sql += ' AND track_id IN (';
+      for (let i = 0; i < trackIds.length; i++) {
+        if (i === trackIds.length - 1) sql += trackIds[i] + ')';
+        else sql += trackIds[i] + ',';
+      }
+    }
+    console.log('TCL: queryTrajectories -> sql', sql);
+
+    fl_trajectories.definitionExpression = sql;
+    fl_trajectories.renderer = tRenderer;
+    if (!fl_trajectories.visible) fl_trajectories.visible = true;
+  }
+  */
+
+  filterUser.addEventListener('change', () => {
+    console.log('select changed');
+    var user_id = event.target.value;
+    queryTracks(user_id);
+  });
+
+  filterButton.addEventListener('click', () => {
+    console.log('filter button clicked');
+    userId = filterUser.value;
+    console.log('TCL: maxDuration.text', maxDuration.value);
+    console.log('TCL: minDuration.text', minDuration.value);
+    if (parseInt(maxDuration.value) >= parseInt(minDuration.value)) {
+      queryTracks(userId, minDuration.value, maxDuration.value);
+    } else {
+      filterButton.disabled = true;
+      fl_trajectories.visible = false;
+      graphicsLayer.graphics = [];
+      M.toast({
+        html: 'Invalid Input - min duration larger than max duration'
+      });
+    }
+  });
+
+  // add legend
+  const legend = new Legend({
+    view: view,
+    layerInfos: [
+      {
+        layer: [fl_trajectories]
+      }
+    ]
+  });
+
+  view.ui.add(legend, 'bottom-left');
+  /*
+  fl_trajectories
+    .load()
+    .then(() => {
+      const query = {
+        where: '1=1',
+        outFields: ['*'],
+        returnGeometry: true
+      };
+      fl_trajectories
+        .queryFeatures(query)
+        .then(result => {
+          console.log(result.features.length);
+          var data = result.features;
+          var symbol1 = new SimpleMarkerSymbol({
+            color: [115, 192, 91],
+            outline: null,
+            size: 12
+          });
+
+          var symbol2 = new SimpleMarkerSymbol({
+            color: [255, 154, 8],
+            outline: null,
+            size: 12
+          });
+
+          var symbol3 = new SimpleMarkerSymbol({
+            color: [255, 73, 0],
+            outline: null,
+            size: 12
+          });
+
+          
+
+          data.forEach(item => {
+            console.log(item.attributes.user_id, item.attributes.track_id);
+            var speed = item.attributes['speed'];
+            if (speed >= 0 && speed < 500) {
+              var g = new Graphic({
+                geometry: item.geometry,
+                // attributes: item.attributes,
+                symbol: symbol1
+              });
+              graphicsLayer.graphics.add(g);
+            } else if (speed >= 500 && speed < 520) {
+              var g = new Graphic({
+                geometry: item.geometry,
+                // attributes: item.attributes,
+                symbol: symbol2
+              });
+              graphicsLayer.graphics.add(g);
+            } else {
+              var g = new Graphic({
+                geometry: item.geometry,
+                // attributes: item.attributes,
+                symbol: symbol3
+              });
+              graphicsLayer.graphics.add(g);
+            }
+          });
+          
+        })
+        .catch(err => {
+          console.error(err);
+        });
+    })
+    .catch(err => {
+      console.log('failed to load trajectory layers: ', err);
+    });
+*/
+  var distanceSum = {
+    onStatisticField: 'Shape__Length', // length
+    outStatisticFieldName: 'total_length',
+    statisticType: 'sum'
+  };
+  var durationSum = {
+    onStatisticField: 'duration', // length
+    outStatisticFieldName: 'total_duration',
+    statisticType: 'sum'
+  };
+
+  const statQuery = fl_tracks.createQuery();
+  statQuery.outStatistics = [distanceSum, durationSum];
+  statQuery.groupByFieldsForStatistics = ['user_id'];
+
+  fl_tracks
+    .queryFeatures(statQuery)
+    .then(result => {
+      console.log('number of users', result.features.length);
+      var users = result.features;
+      users.forEach(user => {
+        var stats = user.attributes;
+        console.log('LEADERBOARD STATS FOR', stats.user_id);
+        console.log(' total distance', stats.total_length);
+        console.log(' total duration', stats.total_duration);
+        console.log(
+          ' leaderboard score',
+          stats.total_length * 10 + stats.total_duration
+        );
+      });
+    })
+    .catch(err => {
+      console.error(err);
+    });
+
+  function findStartEnd(start_coord, end_coord, spatial_reference) {
+    var currentPoi = webMercatorUtils.lngLatToXY(
+      poi[0].longitude,
+      poi[0].latitude
+    );
+    // console.log('TCL: findStartEnd -> currentPoi projected', currentPoi);
+
+    var toStart = new Polyline({
+      paths: [start_coord, currentPoi],
+      spatialReference: spatial_reference
+    });
+
+    var toEnd = new Polyline({
+      paths: [end_coord, currentPoi],
+      spatialReference: spatial_reference
+    });
+
+    var minStartDist = geometryEngine.geodesicLength(toStart, 'meters');
+    var minEndDist = geometryEngine.geodesicLength(toEnd, 'meters');
+    var start = poi[0].name;
+    var end = poi[0].name;
+
+    for (let i = 1; i < poi.length; i++) {
+      currentPoi = webMercatorUtils.lngLatToXY(
+        poi[i].longitude,
+        poi[i].latitude
+      );
+
+      toStart.paths = [start_coord, currentPoi];
+
+      toEnd.paths = [end_coord, currentPoi];
+
+      var startDist = geometryEngine.geodesicLength(toStart, 'meters');
+      var endDist = geometryEngine.geodesicLength(toEnd, 'meters');
+
+      if (startDist < minStartDist) {
+        minStartDist = startDist;
+        start = poi[i].name;
+      }
+      if (endDist < minEndDist) {
+        minEndDist = endDist;
+        end = poi[i].name;
+      }
+    }
+
+    return [start, end];
+  }
+
+  function colorCodeTracks(polyline) {
+    console.log('color code tracks');
+    var segments = polyline.geometry.paths[0];
+    const sr = polyline.geometry.spatialReference;
+    var slowSymbol = new SimpleLineSymbol({
+      color: [115, 192, 91],
+      width: 4,
+      cap: 'round'
+    });
+    var moderateSymbol = new SimpleLineSymbol({
+      color: [255, 154, 8],
+      width: 4,
+      cap: 'round'
+    });
+    var fastSymbol = new SimpleLineSymbol({
+      color: [255, 73, 0],
+      width: 4,
+      cap: 'round'
+    });
+
+    var start_end = findStartEnd(
+      segments[0],
+      segments[segments.length - 1],
+      sr
+    );
+
+    var attributes = {
+      user_id: polyline.attributes.user_id,
+      track_id: polyline.attributes.track_id,
+      duration: polyline.attributes.duration,
+      length: polyline.attributes.Shape__Length,
+      score:
+        polyline.attributes.Shape__Length * 10 + polyline.attributes.duration,
+      start_poi: start_end[0],
+      end_poi: start_end[1]
+    };
+
+    var popupTemplate = {
+      title: 'Track <b>{track_id}</b> of User <b>{user_id}</b>',
+      content:
+        '<ul><li>Start POI: {start_poi}</li><li>End POI: {end_poi}</li><li>Duration: {duration}</li><li>Total Length: {length}</li><li>Score Earned: {score}</li></ul>'
+    };
+
+    for (let i = 0; i < segments.length - 1; i++) {
+      var subline = new Polyline({
+        paths: [segments[i], segments[i + 1]],
+        spatialReference: sr
+      });
+      var dist = geometryEngine.geodesicLength(subline, 'meters');
+
+      var g = new Graphic({
+        geometry: subline,
+        attributes: attributes,
+        popupTemplate: popupTemplate
+      });
+      // console.log('TCL: colorCodeTracks -> dist', dist);
+      if (dist < 10) {
+        g.symbol = slowSymbol;
+      } else if (dist < 16.5) {
+        g.symbol = moderateSymbol;
+      } else {
+        g.symbol = fastSymbol;
+      }
+      graphicsLayer.graphics.add(g);
+    }
+  }
+
+  // polyline = new FeatureLayer({
+  //   url:
+  //     'https://services.arcgis.com/P3ePLMYs2RVChkJx/ArcGIS/rest/services/USA_Freeway_System/FeatureServer/2',
+  //   definitionExpression: "ROUTE_NUM = 'CG8'"
+  // });
+
+  // Finally, we want to zoom to the respective line (but only if the query actually retreived one).
+  const query = new Query();
+  query.where = queryString;
+  fl_tracks.queryFeatureCount(query).then(function(numResults) {
+    if (numResults > 0) {
+      fl_tracks
+        .when(function() {
+          return fl_tracks.queryExtent();
+        })
+        .then(function(response) {
+          view.goTo(response.extent);
+        });
+    }
+  });
+});
