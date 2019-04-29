@@ -11,3 +11,8 @@ body,
   background-color: white;
   padding: 6px;
 }
+
+#slider {
+  margin-top: 15px !important;
+  margin-bottom: 10px !important;
+}
