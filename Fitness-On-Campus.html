@@ -6,8 +6,23 @@
   <meta name="viewport" content="initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>Fitness On Campus Track Sharing</title>
 
+
+  <!-- JQuery -->
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+
+  <!-- nouislider -->
+  <script src="extras/noUiSlider/nouislider.js"></script>
+  <script src="extras/noUiSlider/nouislider.min.js"></script>
+
+
   <!-- Load the ArcGIS JavaScript SDK. -->
   <link rel="stylesheet" href="https://js.arcgis.com/4.11/esri/css/main.css" />
+  <script src="https://js.arcgis.com/4.11/"></script>
+
+  <!-- Load the js for the map -->
+  <script src="js/main.js"></script>
+  <!-- <script src="js/test.js"></script> -->
+
 
   <!-- Add some (minimal) styling to the website. -->
   <link rel="stylesheet" href="css/main.css" />
@@ -25,6 +40,7 @@
 
 <body>
   <div id="filter" class="section section-filter container">
+    <h4 class="center-align">View Tracks</h4>
     <div class="row">
       <div id="filter-div" class="input-field col s12 m6">
         <select id="user-id">
@@ -48,31 +64,22 @@
     <a id="filter-button" class="waves-effect waves-light btn">filter</a>
   </div>
   <!-- The main view where we put the map. -->
-  <div class="section section-map container" id="viewDiv"></div>
+  <div class="section section-map container center-align" id="viewDiv"></div>
 
   <div class="section section-leaderboard container">
-    <h3 class="center-align">LeaderBoard</h3>
+    <h4 class="center-align">LeaderBoard</h4>
     <ul id="leaderboard" class="collection">
+
     </ul>
   </div>
 
 
-  <!-- JQuery -->
-  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
 
   <!-- JS for materlizecss styling -->
   <!--JavaScript at end of body for optimized loading-->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
 
-  <!-- nouislider -->
-  <script src="extras/noUiSlider/nouislider.js"></script>
-  <script src="extras/noUiSlider/nouislider.min.js"></script>
 
-  <script src="https://js.arcgis.com/4.11/"></script>
-
-  <!-- Load the js for the map -->
-  <script src="js/main.js"></script>
-  <!-- <script src="js/test.js"></script> -->
 
   <script>
     // initialize select
