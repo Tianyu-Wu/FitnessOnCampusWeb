@@ -6,6 +6,7 @@ let fl_trajectories;
 let fl_tracks;
 let polyline;
 let graphicsLayer;
+let resultLayer;
 
 const text =
   '{ "poi" : [' +
@@ -30,9 +31,12 @@ require([
   'esri/symbols/SimpleMarkerSymbol',
   'esri/symbols/SimpleLineSymbol',
   'esri/widgets/Legend',
+  "esri/widgets/Expand",
   'esri/geometry/geometryEngine',
   'esri/geometry/support/webMercatorUtils',
   'esri/renderers/UniqueValueRenderer',
+  "esri/renderers/ClassBreaksRenderer",
+  "esri/layers/support/Field",
   'dojo/domReady!'
 ], function (
   Map,
@@ -46,9 +50,12 @@ require([
   SimpleMarkerSymbol,
   SimpleLineSymbol,
   Legend,
+  Expand,
   geometryEngine,
   webMercatorUtils,
-  UniqueValueRenderer
+  UniqueValueRenderer,
+  ClassBreaksRenderer,
+  Field
 ) {
     // Here we retrieve URL parameters (the parts in the URL after the ? sign).
     var url = new URL(window.location.href);
@@ -59,17 +66,15 @@ require([
     var queryString = 'track_id=0 and user_id=1';
     var duration = [];
 
-    var minDuration = document.getElementById('min-duration');
-    var maxDuration = document.getElementById('max-duration');
-
     var slider = document.getElementById('slider');
     var leftLabel = document.getElementById('left-label');
     var rightLabel = document.getElementById('right-label');
 
     var filterUser = document.getElementById('user-id');
-    var filterButton = document.getElementById('filter-button');
 
     var collection = document.getElementById('leaderboard');
+
+    var trackFeatures = [];
 
     // Set up the second feature layer, which shows the line where someone walked.
     fl_tracks = new FeatureLayer({
@@ -90,7 +95,7 @@ require([
 
     var map = new Map({
       basemap: 'osm',
-      layers: [fl_tracks, fl_trajectories, graphicsLayer]
+      layers: [fl_tracks, fl_trajectories]
     });
 
     var view = new MapView({
@@ -101,12 +106,24 @@ require([
       zoom: 18
     });
 
-    // view.ui.add('filter', 'top-right');
-
     // We use the above defined query string to restrict the shown features.
     console.log('TCL: fl_trajectories', fl_trajectories);
     fl_trajectories.definitionExpression = queryString;
     map.add(fl_trajectories);
+
+    // var legend = new Legend({
+    //   view: view,
+    //   container: document.createElement("div")
+    // });
+    // view.ui.add(legend, 'bottom-left');
+
+    var expandLegend = new Expand({
+      view: view,
+      content: new Legend({
+        view: view
+      })
+    });
+    view.ui.add(expandLegend, "top-right");
 
     view
       .when(() => {
@@ -165,16 +182,6 @@ require([
       return [userIds, min, max];
     }
 
-    function getUserId(result) {
-      var features = result.features;
-      console.log('TCL: getUserId -> features', features);
-
-      var userIds = features.map(feature => {
-        return feature.attributes.user_id;
-      });
-      return userIds;
-    }
-
     function addToFilter(info) {
       console.log('info to filter div');
       // add user_id to select
@@ -210,27 +217,11 @@ require([
       return queryTracks(userId, minDurationValue, maxDurationValue);
     }
 
-    /*
-    function addToFilter(userIds) {
-      console.log('add user_ids to filter');
-      userIds.sort();
-      userIds.forEach(userId => {
-        console.log('TCL: addToFilter -> userId', userId);
-        var option = document.createElement('option');
-        option.text = userId;
-        filterUser.add(option);
-        M.FormSelect.init(filterUser);
-        console.log('TCL: addToFilter -> filterUser', filterUser);
-      });
-      console.log('TCL: addToFilter -> filterUser.value', filterUser.value);
-      userId = filterUser.value;
-      return queryTracks(userId, duration);
-    }
-    */
-
     function queryTracks(userId, minDurationValue, maxDurationValue) {
       // clear previous results
       graphicsLayer.graphics = [];
+      trackFeatures = [];
+      map.remove(resultLayer);
       fl_trajectories.visible = false;
       console.log('query tracks');
 
@@ -276,6 +267,154 @@ require([
             }
           });
 
+          console.log("colorcoded features", features);
+          //create a feature collection for trackfeatures
+          var popupTemplate = {
+            title: 'Track <b>{track_id}</b> of User <b>{user_id}</b>',
+            content:
+              '<ul><li>Start POI: {start_poi}</li><li>End POI: {end_poi}</li><li>Total Duration: {duration}</li><li>Total Length: {length}</li><li>Speed: {speed}</li><li>Score Earned: {score}</li></ul>'
+          };
+
+          console.log("TRACK FEATURES: ", trackFeatures);
+
+          const slowSymbol = {
+            type: "simple-line", // autocasts as new SimpleLineSymbol()
+            color: [115, 192, 91],
+            width: "3px",
+            style: "solid",
+            cap: 'round'
+          };
+          const moderateSymbol = {
+            type: "simple-line", // autocasts as new SimpleLineSymbol()
+            color: [255, 154, 8],
+            width: "3px",
+            style: "solid",
+            cap: 'round'
+          };
+          const fastSymbol = {
+            type: "simple-line", // autocasts as new SimpleLineSymbol()
+            color: [255, 73, 0],
+            width: "3px",
+            style: "solid",
+            cap: 'round'
+          };
+          const defaultSymbol = {
+            type: "simple-line", // autocasts as new SimpleLineSymbol()
+            color: [139, 139, 139],
+            width: "3px",
+            style: "solid",
+            cap: 'round'
+          }
+
+          trackRenderer = new ClassBreaksRenderer({
+            field: "speed",
+            legendOptions: {
+              title: "Speed"
+            },
+            defaultSymbol: defaultSymbol,
+            defaultLabel: "unknown",
+            classBreakInfos: [
+              {
+                symbol: slowSymbol,
+                label: "0 to 10",
+                minValue: 0,
+                maxValue: 10
+              },
+              {
+                symbol: moderateSymbol,
+                label: "10 to 16.5",
+                minValue: 10,
+                maxValue: 16.5
+              },
+              {
+                symbol: fastSymbol,
+                label: "> 16.5",
+                minValue: 16.5,
+                maxValue: 310
+              }
+            ]
+          });
+
+          var fields = [new Field({
+            name: "FID",
+            alias: "FID",
+            type: "oid"
+          }), new Field({
+            name: "duration",
+            alias: "duration",
+            type: "double"
+          }),
+          new Field({
+            name: "end_poi",
+            alias: "end_poi",
+            type: "string"
+          }),
+          new Field({
+            name: "length",
+            alias: "length",
+            type: "double"
+          }),
+          new Field({
+            name: "score",
+            alias: "score",
+            type: "double"
+          }), new Field({
+            name: "speed",
+            alias: "speed",
+            type: "double"
+          }),
+          new Field({
+            name: "start_poi",
+            alias: "start_poi",
+            type: "string"
+          }),
+          new Field({
+            name: "track_id",
+            alias: "track_id",
+            type: "double"
+          }),
+          new Field({
+            name: "user_id",
+            alias: "user_id",
+            type: "integer"
+          })
+          ];
+
+          console.log("create featurelayer for track features");
+          resultLayer = new FeatureLayer({
+            popupTemplate: popupTemplate,
+            fields: fields,
+            objectIdField: "FID",
+            source: trackFeatures,
+            renderer: trackRenderer
+          });
+          map.add(resultLayer);
+          resultLayer.when(() => {
+            var max_speed = {
+              onStatisticField: 'speed',
+              outStatisticFieldName: 'max_speed',
+              statisticType: 'max'
+            };
+            var minSpeed = {
+              onStatisticField: 'speed',
+              outStatisticFieldName: 'min_speed',
+              statisticType: 'min'
+            };
+
+            var query = resultLayer.createQuery();
+            query.outStatistics = [minSpeed, max_speed];
+
+            resultLayer.queryFeatures(query).then((result) => {
+              console.log(result.features);
+            }).catch((err) => {
+
+            });
+            console.log("renderer", resultLayer.renderer);
+            // resultLayer.renderer = trackRenderer;
+            console.log("renderer", resultLayer.renderer);
+
+          })
+
           if (result.length == 0) {
             M.toast({
               html: 'No reasonable track features found'
@@ -285,29 +424,7 @@ require([
             console.log('TCL: queryTracks -> resultMap', resultMap);
             queryTrajectories(resultMap);
           }
-          /*
-          features.forEach(item => {
-            console.log('TCL: item', item.toJSON());
-  
-            if (item.geometry) {
-              flag = 1;
-              trackIds.push(item.attributes.track_id);
-              tRenderer.addUniqueValueInfo({
-                value: item.attributes.track_id,
-                symbol: {
-                  type: 'simple-marker', // autocasts as new SimpleFillSymbol()
-                  size: 5,
-                  color: randomColor(),
-                  outline: null
-                }
-              });
-            }
-          });
-          if (!flag) {
-          } else {
-            // queryTrajectories(userId, trackIds, tRenderer);
-          }
-          */
+
         })
         .catch(err => {
           console.error(err);
@@ -359,7 +476,8 @@ require([
               size: 5,
               color: randomColor(),
               outline: null
-            }
+            },
+            label: "Track " + track
           });
         });
       } else {
@@ -378,7 +496,8 @@ require([
               size: 5,
               color: randomColor(),
               outline: null
-            }
+            },
+            label: "User " + entry.user_id
           });
         }
       }
@@ -390,6 +509,11 @@ require([
       fl_trajectories.renderer = tRenderer;
       // display query result
       if (!fl_trajectories.visible) fl_trajectories.visible = true;
+      // add legend
+      fl_trajectories.when(() => {
+        console.log("trajectory layer loaded");
+        legend.refresh();
+      })
     }
 
     function combineQueryWithUserTrack(result) {
@@ -426,24 +550,6 @@ require([
       }
       queryTracks(userId, minDurationValue, maxDurationValue);
     });
-
-    filterButton.addEventListener('click', () => {
-      console.log('filter button clicked');
-      userId = filterUser.value;
-      queryTracks(userId, minDurationValue, maxDurationValue);
-    });
-
-    // add legend
-    var legend = new Legend({
-      view: view,
-      layerInfos: [
-        {
-          layer: [fl_trajectories]
-        }
-      ]
-    });
-
-    view.ui.add(legend, 'bottom-left');
 
     var distanceSum = {
       onStatisticField: 'Shape__Length', // length
@@ -611,17 +717,6 @@ require([
         sr
       );
 
-      var attributes = {
-        user_id: polyline.attributes.user_id,
-        track_id: polyline.attributes.track_id,
-        duration: polyline.attributes.duration,
-        length: polyline.attributes.Shape__Length,
-        score:
-          polyline.attributes.Shape__Length * 10 + polyline.attributes.duration,
-        start_poi: start_end[0],
-        end_poi: start_end[1]
-      };
-
       var popupTemplate = {
         title: 'Track <b>{track_id}</b> of User <b>{user_id}</b>',
         content:
@@ -629,17 +724,37 @@ require([
       };
 
       for (let i = 0; i < segments.length - 1; i++) {
+        console.log("TRACK FEATURE LENGTH", trackFeatures.length);
         var subline = new Polyline({
           paths: [segments[i], segments[i + 1]],
           spatialReference: sr
         });
         var dist = geometryEngine.geodesicLength(subline, 'meters');
+        var attributes = {
+          FID: trackFeatures.length,
+          user_id: polyline.attributes.user_id,
+          track_id: polyline.attributes.track_id,
+          duration: polyline.attributes.duration,
+          length: polyline.attributes.Shape__Length,
+          score:
+            polyline.attributes.Shape__Length * 10 + polyline.attributes.duration,
+          start_poi: start_end[0],
+          end_poi: start_end[1],
+          speed: dist
+        };
 
         var g = new Graphic({
           geometry: subline,
           attributes: attributes,
           popupTemplate: popupTemplate
         });
+
+        var t = new Graphic({
+          geometry: subline,
+          attributes: attributes
+        });
+        trackFeatures.push(t);
+
         // console.log('TCL: colorCodeTracks -> dist', dist);
         if (dist < 10) {
           g.symbol = slowSymbol;
@@ -651,12 +766,6 @@ require([
         graphicsLayer.graphics.add(g);
       }
     }
-
-    // polyline = new FeatureLayer({
-    //   url:
-    //     'https://services.arcgis.com/P3ePLMYs2RVChkJx/ArcGIS/rest/services/USA_Freeway_System/FeatureServer/2',
-    //   definitionExpression: "ROUTE_NUM = 'CG8'"
-    // });
 
     // Finally, we want to zoom to the respective line (but only if the query actually retreived one).
     const query = new Query();
