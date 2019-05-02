@@ -111,11 +111,10 @@ require([
     fl_trajectories.definitionExpression = queryString;
     map.add(fl_trajectories);
 
-    // var legend = new Legend({
-    //   view: view,
-    //   container: document.createElement("div")
-    // });
-    // view.ui.add(legend, 'bottom-left');
+    var legend = new Legend({
+      view: view,
+      container: document.createElement("div")
+    });
 
     var expandLegend = new Expand({
       view: view,
@@ -123,7 +122,44 @@ require([
         view: view
       })
     });
-    view.ui.add(expandLegend, "top-right");
+
+    // keeps track whether the window size is small
+    var isSmall = (view.heightBreakpoint === "xsmall" || view.widthBreakpoint === "xsmall");
+    // initialize ui components with respect to window size
+    if (isSmall) {
+      view.ui.add(expandLegend, 'top-right');
+      view.ui.components = ["attribution"];
+    } else {
+      view.ui.add(legend, 'top-right');
+    }
+
+    // use expandlegend on small devices
+    view.watch("heightBreakpoint, widthBreakpoint", () => {
+      console.log("height breakpoint", view.heightBreakpoint, view.widthBreakpoint);
+      isSmall = (view.heightBreakpoint === "xsmall" || view.widthBreakpoint === "xsmall");
+      updateUI();
+    });
+
+    function updateUI() {
+      if (isSmall) {
+        view.ui.add(expandLegend, 'top-right');
+        view.ui.remove(legend);
+        view.ui.components = ["attribution"];
+      } else {
+        view.ui.add(legend, 'top-right');
+        view.ui.remove(expandLegend);
+        view.ui.components = ["attribution", "zoom"];
+        console.log("ui components", view.ui.components);
+      }
+    }
+
+    function refreshLegend() {
+      if (isSmall) {
+        legend.refresh();
+      } else {
+        expandLegend.refresh();
+      }
+    }
 
     view
       .when(() => {
@@ -268,162 +304,7 @@ require([
           });
 
           console.log("colorcoded features", features);
-          //create a feature collection for trackfeatures
-          var popupTemplate = {
-            title: 'Track <b>{track_id}</b> of User <b>{user_id}</b>',
-            content:
-              '<ul><li>Start POI: {start_poi}</li><li>End POI: {end_poi}</li><li>Total Duration: {duration}</li><li>Total Length: {length}</li><li>Speed: {speed}</li><li>Score Earned: {score}</li></ul>'
-          };
-
-          console.log("TRACK FEATURES: ", trackFeatures);
-
-          const slowSymbol = {
-            type: "simple-line", // autocasts as new SimpleLineSymbol()
-            color: [115, 192, 91],
-            width: "3px",
-            style: "solid",
-            cap: 'round'
-          };
-          const moderateSymbol = {
-            type: "simple-line", // autocasts as new SimpleLineSymbol()
-            color: [255, 154, 8],
-            width: "3px",
-            style: "solid",
-            cap: 'round'
-          };
-          const fastSymbol = {
-            type: "simple-line", // autocasts as new SimpleLineSymbol()
-            color: [255, 73, 0],
-            width: "3px",
-            style: "solid",
-            cap: 'round'
-          };
-          const defaultSymbol = {
-            type: "simple-line", // autocasts as new SimpleLineSymbol()
-            color: [139, 139, 139],
-            width: "3px",
-            style: "solid",
-            cap: 'round'
-          }
-
-          trackRenderer = new ClassBreaksRenderer({
-            field: "speed",
-            legendOptions: {
-              title: "Speed"
-            },
-            defaultSymbol: defaultSymbol,
-            defaultLabel: "unknown",
-            classBreakInfos: [
-              {
-                symbol: slowSymbol,
-                label: "0 to 10",
-                minValue: 0,
-                maxValue: 10
-              },
-              {
-                symbol: moderateSymbol,
-                label: "10 to 16.5",
-                minValue: 10,
-                maxValue: 16.5
-              },
-              {
-                symbol: fastSymbol,
-                label: "> 16.5",
-                minValue: 16.5,
-                maxValue: 310
-              }
-            ]
-          });
-
-          var fields = [new Field({
-            name: "FID",
-            alias: "FID",
-            type: "oid"
-          }), new Field({
-            name: "duration",
-            alias: "duration",
-            type: "double"
-          }),
-          new Field({
-            name: "end_poi",
-            alias: "end_poi",
-            type: "string"
-          }),
-          new Field({
-            name: "length",
-            alias: "length",
-            type: "double"
-          }),
-          new Field({
-            name: "score",
-            alias: "score",
-            type: "double"
-          }), new Field({
-            name: "speed",
-            alias: "speed",
-            type: "double"
-          }),
-          new Field({
-            name: "start_poi",
-            alias: "start_poi",
-            type: "string"
-          }),
-          new Field({
-            name: "track_id",
-            alias: "track_id",
-            type: "double"
-          }),
-          new Field({
-            name: "user_id",
-            alias: "user_id",
-            type: "integer"
-          })
-          ];
-
-          console.log("create featurelayer for track features");
-          resultLayer = new FeatureLayer({
-            popupTemplate: popupTemplate,
-            fields: fields,
-            objectIdField: "FID",
-            source: trackFeatures,
-            renderer: trackRenderer
-          });
-          map.add(resultLayer);
-          resultLayer.when(() => {
-            var max_speed = {
-              onStatisticField: 'speed',
-              outStatisticFieldName: 'max_speed',
-              statisticType: 'max'
-            };
-            var minSpeed = {
-              onStatisticField: 'speed',
-              outStatisticFieldName: 'min_speed',
-              statisticType: 'min'
-            };
-
-            var query = resultLayer.createQuery();
-            query.outStatistics = [minSpeed, max_speed];
-
-            resultLayer.queryFeatures(query).then((result) => {
-              console.log(result.features);
-            }).catch((err) => {
-
-            });
-            console.log("renderer", resultLayer.renderer);
-            // resultLayer.renderer = trackRenderer;
-            console.log("renderer", resultLayer.renderer);
-
-          })
-
-          if (result.length == 0) {
-            M.toast({
-              html: 'No reasonable track features found'
-            });
-          } else {
-            var resultMap = organizeResults(result);
-            console.log('TCL: queryTracks -> resultMap', resultMap);
-            queryTrajectories(resultMap);
-          }
+          displayResult(result);
 
         })
         .catch(err => {
@@ -512,7 +393,7 @@ require([
       // add legend
       fl_trajectories.when(() => {
         console.log("trajectory layer loaded");
-        legend.refresh();
+        refreshLegend();
       })
     }
 
@@ -765,6 +646,165 @@ require([
         }
         graphicsLayer.graphics.add(g);
       }
+    }
+
+    function displayResult(result) {
+      //create a feature collection for trackfeatures
+      var popupTemplate = {
+        title: 'Track <b>{track_id}</b> of User <b>{user_id}</b>',
+        content:
+          '<ul><li>Start POI: {start_poi}</li><li>End POI: {end_poi}</li><li>Total Duration: {duration}</li><li>Total Length: {length}</li><li>Speed: {speed}</li><li>Score Earned: {score}</li></ul>'
+      };
+
+      console.log("TRACK FEATURES: ", trackFeatures);
+
+      const slowSymbol = {
+        type: "simple-line", // autocasts as new SimpleLineSymbol()
+        color: [115, 192, 91],
+        width: "3px",
+        style: "solid",
+        cap: 'round'
+      };
+      const moderateSymbol = {
+        type: "simple-line", // autocasts as new SimpleLineSymbol()
+        color: [255, 154, 8],
+        width: "3px",
+        style: "solid",
+        cap: 'round'
+      };
+      const fastSymbol = {
+        type: "simple-line", // autocasts as new SimpleLineSymbol()
+        color: [255, 73, 0],
+        width: "3px",
+        style: "solid",
+        cap: 'round'
+      };
+      const defaultSymbol = {
+        type: "simple-line", // autocasts as new SimpleLineSymbol()
+        color: [139, 139, 139],
+        width: "3px",
+        style: "solid",
+        cap: 'round'
+      }
+
+      trackRenderer = new ClassBreaksRenderer({
+        field: "speed",
+        legendOptions: {
+          title: "Speed"
+        },
+        defaultSymbol: defaultSymbol,
+        defaultLabel: "unknown",
+        classBreakInfos: [
+          {
+            symbol: slowSymbol,
+            label: "0 to 10",
+            minValue: 0,
+            maxValue: 10
+          },
+          {
+            symbol: moderateSymbol,
+            label: "10 to 16.5",
+            minValue: 10,
+            maxValue: 16.5
+          },
+          {
+            symbol: fastSymbol,
+            label: "> 16.5",
+            minValue: 16.5,
+            maxValue: 310
+          }
+        ]
+      });
+
+      var fields = [new Field({
+        name: "FID",
+        alias: "FID",
+        type: "oid"
+      }), new Field({
+        name: "duration",
+        alias: "duration",
+        type: "double"
+      }),
+      new Field({
+        name: "end_poi",
+        alias: "end_poi",
+        type: "string"
+      }),
+      new Field({
+        name: "length",
+        alias: "length",
+        type: "double"
+      }),
+      new Field({
+        name: "score",
+        alias: "score",
+        type: "double"
+      }), new Field({
+        name: "speed",
+        alias: "speed",
+        type: "double"
+      }),
+      new Field({
+        name: "start_poi",
+        alias: "start_poi",
+        type: "string"
+      }),
+      new Field({
+        name: "track_id",
+        alias: "track_id",
+        type: "double"
+      }),
+      new Field({
+        name: "user_id",
+        alias: "user_id",
+        type: "integer"
+      })
+      ];
+
+      console.log("create featurelayer for track features");
+      resultLayer = new FeatureLayer({
+        popupTemplate: popupTemplate,
+        fields: fields,
+        objectIdField: "FID",
+        source: trackFeatures,
+        renderer: trackRenderer
+      });
+      map.add(resultLayer, 0);
+      resultLayer.when(() => {
+        var max_speed = {
+          onStatisticField: 'speed',
+          outStatisticFieldName: 'max_speed',
+          statisticType: 'max'
+        };
+        var minSpeed = {
+          onStatisticField: 'speed',
+          outStatisticFieldName: 'min_speed',
+          statisticType: 'min'
+        };
+
+        var query = resultLayer.createQuery();
+        query.outStatistics = [minSpeed, max_speed];
+
+        resultLayer.queryFeatures(query).then((result) => {
+          console.log(result.features);
+        }).catch((err) => {
+
+        });
+        console.log("renderer", resultLayer.renderer);
+        // resultLayer.renderer = trackRenderer;
+        console.log("renderer", resultLayer.renderer);
+      })
+
+      if (result.length == 0) {
+        M.toast({
+          html: 'No reasonable track features found'
+        });
+      } else {
+        var resultMap = organizeResults(result);
+        console.log('TCL: queryTracks -> resultMap', resultMap);
+        queryTrajectories(resultMap);
+      }
+
     }
 
     // Finally, we want to zoom to the respective line (but only if the query actually retreived one).
