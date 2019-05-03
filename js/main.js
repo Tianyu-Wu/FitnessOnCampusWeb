@@ -55,7 +55,7 @@ require([
     var queryString = 'track_id=0 and user_id=1';
     var duration = [];
 
-    var slider = document.getElementById('slider');
+    var slider = document.getElementById('duration-slider');
     var leftLabel = document.getElementById('left-label');
     var rightLabel = document.getElementById('right-label');
 
@@ -367,7 +367,7 @@ require([
           p2.innerHTML = "Total Duration: " + entry[2];
           li.appendChild(p2);
           var div = document.createElement('div');
-          div.className = "secondary-content";
+          div.className = "secondary-content deep-orange-text text-lighten-1";
           var p3 = document.createElement('p');
           p3.innerHTML = parseFloat(entry[3]).toFixed(2);
           p3.className = "flow-text";
@@ -691,6 +691,11 @@ require([
       // refresh legend
       fl_trajectories.when(() => {
         console.log("trajectory layer loaded");
+        fl_trajectories.queryFeatureCount().then(function (numFeatures) {
+          // prints the total count to the console
+          console.log("number of trajectories: " + numFeatures);
+        });
+
         refreshLegend();
       })
     }

@@ -53,19 +53,17 @@
       <div class="col s12 m6">
         <label>Filter by Duration</label>
       </div>
-      <div id="slider" class="col s12 m6"></div>
+      <div id="duration-slider" class="col s12 m6"></div>
 
       <div class="col s6 m3 left-align">
-        <label id="left-label" for="slider"></label>
+        <label id="left-label" for="duration-slider"></label>
       </div>
       <div class="col s6 m3 right-align">
-        <label id="right-label" for="slider"></label>
+        <label id="right-label" for="duration-slider"></label>
       </div>
     </div>
   </div>
   <!-- The main view where we put the map. -->
-
-
   <div class="section section-map scrollspy" id="viewDiv"></div>
 
   <div class="section section-leaderboard container scrollspy">
@@ -99,7 +97,7 @@
     });
 
     // initialize slider for duration
-    var slider = document.getElementById('slider');
+    var slider = document.getElementById('duration-slider');
     noUiSlider.create(slider, {
       start: [0, 100],
       connect: true,

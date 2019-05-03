@@ -1,80 +1,249 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
-    <title>Fitness on Campus</title>
 
-    <!-- Styling of the webpag with materializecss -->
-    <!--Import Google Icon Font-->
-    <link
-      href="https://fonts.googleapis.com/icon?family=Material+Icons"
-      rel="stylesheet"
-    />
-    <!--Import materialize.css-->
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css"
-    />
-    <!--Let browser know website is optimized for mobile-->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  </head>
-  <body id="home" class="scrollspy">
-    <!-- Navbar -->
-    <div class="navbar-fixed">
-      <nav class="deep-orange lighten-2 deep-orange-text text-lighten-5">
-        <div class="container">
-          <div class="nav-wrapper">
-            <a href="#" class="brand-logo">FitnessOnCampus</a>
-            <a href="#" data-target="mobile-nav" class="sidenav-trigger">
-              <i class="material-icons">menu</i>
-            </a>
-            <ul class="right hide-on-med-and-down">
-              <li>
-                <a href="#home">Home</a>
-              </li>
-              <li>
-                <a href="#leaderboard">Leaderboard</a>
-              </li>
-              <li>
-                <a href="#tracks">Tracks</a>
-              </li>
-              <li>
-                <a href="#info">About The Compaign</a>
-              </li>
-            </ul>
-          </div>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+  <title>Fitness on Campus</title>
+  <!-- JQuery -->
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+
+  <!-- nouislider -->
+  <script src="extras/noUiSlider/nouislider.js"></script>
+  <script src="extras/noUiSlider/nouislider.min.js"></script>
+
+  <!-- Load the ArcGIS JavaScript SDK. -->
+  <link rel="stylesheet" href="https://js.arcgis.com/4.11/esri/css/main.css" />
+  <script src="https://js.arcgis.com/4.11/"></script>
+
+  <!-- Load the js for the map -->
+  <script src="js/main.js"></script>
+  <!-- <script src="js/test.js"></script> -->
+
+
+  <!-- Add some (minimal) styling to the website. -->
+  <link rel="stylesheet" href="css/main.css" />
+
+  <!-- Styling with materializecss -->
+  <!--Import Google Icon Font-->
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
+  <!--Import materialize.css-->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css" />
+  <!--Let browser know website is optimized for mobile-->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Import nouislider css -->
+  <link rel="stylesheet" href="extras/noUiSlider/nouislider.css" />
+
+  <!-- Import fontawesome css for social media logos -->
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.8.1/css/all.css"
+    integrity="sha384-50oBUHEmvpQ+1lW4y57PTFmhCaXp0ML5d60M1M7uH2+nqUivzIebhndOJK28anvf" crossorigin="anonymous" />
+</head>
+
+<body id="home" class="scrollspy">
+  <!-- Navbar -->
+  <div class="navbar-fixed">
+    <nav class="deep-orange lighten-2 deep-orange-text text-lighten-5">
+      <div class="container">
+        <div class="nav-wrapper">
+          <a href="#" class="brand-logo">FitnessOnCampus</a>
+          <a href="#" data-target="mobile-nav" class="sidenav-trigger">
+            <i class="material-icons">menu</i>
+          </a>
+          <ul class="right hide-on-med-and-down">
+            <li>
+              <a href="#home">Home</a>
+            </li>
+            <li>
+              <a href="#tracks">Tracks</a>
+            </li>
+            <li>
+              <a href="#leader-section">Leaderboard</a>
+            </li>
+            <li>
+              <a href="#follow">About The Compaign</a>
+            </li>
+          </ul>
         </div>
-      </nav>
-    </div>
-    <ul class="sidenav" id="mobile-nav">
+      </div>
+    </nav>
+  </div>
+  <ul class="sidenav" id="mobile-nav">
+    <li>
+      <a href="#home" class="deep-orange-text text-lighten-2">Home</a>
+    </li>
+    <li>
+      <a href="#tracks" class="deep-orange-text text-lighten-2">Tracks</a>
+    </li>
+    <li>
+      <a href="#leader-section" class="deep-orange-text text-lighten-2">Leaderboard</a>
+    </li>
+    <li>
+      <a href="#follow" class="deep-orange-text text-lighten-2">About The Compaign</a>
+    </li>
+  </ul>
+
+  <div class="fixed-action-btn">
+    <a href="#home" class="btn-floating btn-large amber darken-3">
+      <i class="large material-icons">publish</i>
+    </a>
+  </div>
+
+  <!-- Section: Slider -->
+  <section class="slider">
+    <ul class="slides">
       <li>
-        <a href="#home" class="deep-orange-text text-lighten-2">Home</a>
+        <img src="https://source.unsplash.com/580x250/?campus/" />
+        <!-- random image -->
+        <div class="caption center-align">
+          <h3>Fitness on Campus Campaign</h3>
+          <h5 class="light grey-text text-lighten-3 hide-on-small-only">
+            Lorem ipsum dolor sit amet consectetur adipisicing elit. Soluta,
+            fugiat!
+          </h5>
+        </div>
       </li>
       <li>
-        <a href="#leaderboard" class="deep-orange-text text-lighten-2"
-          >Leaderboard</a
-        >
+        <img src="https://source.unsplash.com/580x250/?travel/" />
+        <!-- random image -->
+        <div class="caption left-align">
+          <h3>Explore Hönggerberg!</h3>
+          <h5 class="light grey-text text-lighten-3 hide-on-small-only">
+            Lorem ipsum dolor, sit amet consectetur adipisicing elit. Beatae,
+            perferendis!
+          </h5>
+        </div>
       </li>
       <li>
-        <a href="#tracks" class="deep-orange-text text-lighten-2">Tracks</a>
-      </li>
-      <li>
-        <a href="#info" class="deep-orange-text text-lighten-2"
-          >About The Compaign</a
-        >
+        <img src="https://source.unsplash.com/580x250/?nature/" />
+        <!-- random image -->
+        <div class="caption right-align">
+          <h3>Wandern in Nature</h3>
+          <h5 class="light grey-text text-lighten-3 hide-on-small-only">
+            Lorem ipsum dolor sit amet consectetur adipisicing elit. Sapiente,
+            nemo?
+          </h5>
+        </div>
       </li>
     </ul>
+  </section>
 
-    <!-- JS for materlizecss styling -->
-    <!--JavaScript at end of body for optimized loading-->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
-    <!-- JS for styling webpage -->
-    <script>
-      // initialize side navbar for mobile devices
-      const sideNav = document.querySelector('.sidenav');
-      M.Sidenav.init(sideNav, {});
-    </script>
-  </body>
+  <!-- Section view tracks (filter + map) -->
+  <section id="tracks" class="section section-filter deep-orange lighten-1 scrollspy">
+    <div class="container">
+      <h3 class="center-align white-text">View Tracks</h3>
+      <div class="row">
+        <div id="filter-div" class="input-field col s12 m6">
+          <select id="user-id" class="deep-orange lighten-2">
+            <option value="" selected>Choose All User ID</option>
+          </select>
+          <label>Filter by User ID</label>
+        </div>
+
+        <div class="col s12 m6">
+          <label>Filter by Duration</label>
+        </div>
+        <div id="duration-slider" class="col s12 m6"></div>
+
+        <div class="col s6 m3 left-align">
+          <label id="left-label" for="duration-slider"></label>
+        </div>
+        <div class="col s6 m3 right-align">
+          <label id="right-label" for="duration-slider"></label>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- The main view where we put the map. -->
+  <div class="section section-map scrollspy" id="viewDiv"></div>
+
+  <!-- Section: Leaderboard -->
+  <section id="leader-section" class="section section-leaderboard container scrollspy">
+    <h3 class="center-align deep-orange-text text-lighten-1">Leader Board</h3>
+    <ul id="leaderboard" class="collection">
+    </ul>
+  </section>
+
+  <!-- Section: Follow Us-->
+  <footer id="follow" class="section section-follow center deep-orange lighten-1 white-text">
+    <div class="row">
+      <div class="col s12">
+        <h4>Follow FitnessOnCampus</h4>
+        <p>Follow us on social media for special offers</p>
+        <a href="#" class="white-text">
+          <i class="fab fa-facebook fa-4x"></i>
+        </a>
+        <a href="#" class="white-text">
+          <i class="fab fa-linkedin fa-4x"></i>
+        </a>
+        <a href="#" class="white-text">
+          <i class="fab fa-twitter fa-4x"></i>
+        </a>
+        <a href="#" class="white-text">
+          <i class="fab fa-google-plus fa-4x"></i>
+        </a>
+        <a href="#" class="white-text">
+          <i class="fab fa-pinterest fa-4x"></i>
+        </a>
+      </div>
+    </div>
+    <p>FitnessOnCampus &copy; 2019</p>
+  </footer>
+
+
+  <!-- JS for materlizecss styling -->
+  <!--JavaScript at end of body for optimized loading-->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+  <!-- JS for styling webpage -->
+  <script>
+    // initialize side navbar for mobile devices
+    const sideNav = document.querySelector('.sidenav');
+    M.Sidenav.init(sideNav, {});
+
+    // initialize slider
+    const gallery = document.querySelector('.slider');
+    M.Slider.init(gallery, {
+      indicators: false,
+      transition: 500,
+      interval: 6000
+    });
+
+    // initialize floating button
+    document.addEventListener('DOMContentLoaded', function () {
+      var elems = document.querySelectorAll('.fixed-action-btn');
+      var instances = M.FloatingActionButton.init(elems);
+    });
+
+    // initialize select
+    document.addEventListener('DOMContentLoaded', function () {
+      var elems = document.querySelectorAll('select');
+      var instances = M.FormSelect.init(elems);
+    });
+
+    // initialize slider for duration
+    var slider = document.getElementById('duration-slider');
+    noUiSlider.create(slider, {
+      start: [0, 100],
+      connect: true,
+      step: 1,
+      orientation: 'horizontal', // 'horizontal' or 'vertical'
+      range: {
+        min: 0,
+        max: 100
+      },
+      format: wNumb({
+        decimals: 0
+      })
+    });
+    slider.setAttribute('disabled', true);
+
+    // scrollspy
+    const ss = document.querySelectorAll('.scrollspy');
+    M.ScrollSpy.init(ss, {});
+
+  </script>
+</body>
+
 </html>
