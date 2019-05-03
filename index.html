@@ -43,6 +43,7 @@
 
 <body id="home" class="scrollspy">
   <!-- Navbar -->
+  <!-- a responsive fixed navbar, that will display as sidebar on mobile devices -->
   <div class="navbar-fixed">
     <nav class="deep-orange lighten-2 deep-orange-text text-lighten-5">
       <div class="container">
@@ -84,6 +85,7 @@
     </li>
   </ul>
 
+  <!-- Fixed floating button for quickly scrolling to the top -->
   <div class="fixed-action-btn">
     <a href="#home" class="btn-floating btn-large amber darken-3">
       <i class="large material-icons">publish</i>
@@ -91,6 +93,7 @@
   </div>
 
   <!-- Section: Slider -->
+  <!-- a slider for displaying images (not really does anything, just to the webpage looks more real) -->
   <section class="slider">
     <ul class="slides">
       <li>
@@ -135,6 +138,7 @@
       <h3 class="center-align white-text">View Tracks</h3>
       <div class="row">
         <div id="filter-div" class="input-field col s12 m6">
+          <!-- dropdown list of active user_ids to be populated -->
           <select id="user-id" class="deep-orange lighten-2">
             <option value="" selected>Choose All User ID</option>
           </select>
@@ -144,8 +148,9 @@
         <div class="col s12 m6">
           <label>Filter by Duration</label>
         </div>
+        <!-- range slider for filtering by duration -->
         <div id="duration-slider" class="col s12 m6"></div>
-
+        <!-- label the min and max duration -->
         <div class="col s6 m3 left-align">
           <label id="left-label" for="duration-slider"></label>
         </div>
@@ -160,6 +165,7 @@
   <div class="section section-map scrollspy" id="viewDiv"></div>
 
   <!-- Section: Leaderboard -->
+  <!-- the list of active users and their corresponding scores -->
   <section id="leader-section" class="section section-leaderboard container scrollspy">
     <h3 class="center-align deep-orange-text text-lighten-1">Leader Board</h3>
     <ul id="leaderboard" class="collection">

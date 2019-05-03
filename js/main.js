@@ -2,10 +2,7 @@
 // feature layers and maps. Use this html file by visiting
 // http://host:port/mobile-gis/?track_id=0&user_id=0 (replace host with 127.0.0.1 and the port for
 // example with 5000 for testing).
-let fl_trajectories;
-let fl_tracks;
-let polyline;
-let resultLayer;
+
 
 const text =
   '{ "poi" : [' +
@@ -46,44 +43,47 @@ require([
   ClassBreaksRenderer,
   Field
 ) {
-    // Here we retrieve URL parameters (the parts in the URL after the ? sign).
-    var url = new URL(window.location.href);
-    var trackId = url.searchParams.get('track_id');
-    var userId = url.searchParams.get('user_id');
-    console.log('Retrieving track ' + trackId + ' for user ' + userId + '.');
-    // var queryString = 'track_id=' + trackId + ' AND user_id=' + userId;
-    var queryString = 'track_id=0 and user_id=1';
-    var duration = [];
-
+    // get the elements in HTML that need to be populated
     var slider = document.getElementById('duration-slider');
     var leftLabel = document.getElementById('left-label');
     var rightLabel = document.getElementById('right-label');
-
     var filterUser = document.getElementById('user-id');
-
     var collection = document.getElementById('leaderboard');
 
+    // declare global variables
+    // stores a list of track segment graphics, which will be used to generate color coded track layer
     var trackFeatures = [];
+    // keeps track of currently selected user_id from the filter
+    var userId;
+    // keeps track of currently selected duration from the filter
+    var duration = [];
 
-    // Set up the second feature layer, which shows the line where someone walked.
-    fl_tracks = new FeatureLayer({
+    // Set up the original track feature layer, which shows the line where someone walked.
+    var fl_tracks = new FeatureLayer({
       url:
         'https://services1.arcgis.com/i9MtZ1vtgD3gTnyL/arcgis/rest/services/tracks/FeatureServer/0',
       visible: false
     });
 
-    // Set up the first feature layer, the points where someone collected treasures.
-    fl_trajectories = new FeatureLayer({
+    // Set up the original trajectory feature layer, the points where someone collected treasures.
+    // The trajecotries layer is initially hidden, once the query is defined, the visibility will be set to true to show the points after filter
+    var fl_trajectories = new FeatureLayer({
       url:
         'https://services1.arcgis.com/i9MtZ1vtgD3gTnyL/arcgis/rest/services/trajectories/FeatureServer/0',
       visible: false
     });
 
+    // a layer for displaying color coded tracks
+    var resultLayer;
+
+    // define the basemap as well as the layers on top
+    // not that the resultlayer will be added once it's defined
     var map = new Map({
       basemap: 'osm',
-      layers: [fl_tracks, fl_trajectories]
+      layers: [fl_trajectories]
     });
 
+    // define a view of the map object which is centered at honggerberg campus
     var view = new MapView({
       container: 'viewDiv', // This is a reference to the DOM node that contains the map view.
       map: map,
@@ -92,16 +92,13 @@ require([
       zoom: 18
     });
 
-    // We use the above defined query string to restrict the shown features.
-    console.log('TCL: fl_trajectories', fl_trajectories);
-    fl_trajectories.definitionExpression = queryString;
-    map.add(fl_trajectories);
-
+    // define a legend style to be shown on large and medium devices
     var legend = new Legend({
       view: view,
       container: document.createElement("div")
     });
 
+    // define a expandable legend to be shown on small (e.g. mobile devices)
     var expandLegend = new Expand({
       view: view,
       content: new Legend({
@@ -113,19 +110,25 @@ require([
     var isSmall = (view.heightBreakpoint === "xsmall" || view.widthBreakpoint === "xsmall");
     // initialize ui components with respect to window size
     if (isSmall) {
+      // if the window size is very small, adapt to expandable legend
       view.ui.add(expandLegend, 'top-right');
       view.ui.components = ["attribution"];
     } else {
+      // otherwise show default legend style on large window
       view.ui.add(legend, 'top-right');
     }
 
-    // use expandlegend on small devices
+    // watch the window size breakpoint in order to update to corresponding legend style will be shown
     view.watch("heightBreakpoint, widthBreakpoint", () => {
       console.log("height breakpoint", view.heightBreakpoint, view.widthBreakpoint);
       isSmall = (view.heightBreakpoint === "xsmall" || view.widthBreakpoint === "xsmall");
       updateUI();
     });
 
+    /**
+     * Updating view ui with respect to window size
+     * hide zoom component and use expandable legend on mobile devices
+     */
     function updateUI() {
       if (isSmall) {
         view.ui.add(expandLegend, 'top-right');
@@ -139,6 +142,9 @@ require([
       }
     }
 
+    /**
+     * Refresh currently active legend to show the latest symbology
+     */
     function refreshLegend() {
       if (isSmall) {
         legend.refresh();
@@ -149,6 +155,7 @@ require([
 
     view
       .when(() => {
+        // construct statistic query for min and max duration as well as list of active user ids
         console.log('view is ready');
         return fl_tracks.when(() => {
           console.log('tracks layer is ready');
@@ -168,6 +175,7 @@ require([
           queryUserId.outStatistics = [minDurationByUser, maxDurationByUser];
           queryUserId.groupByFieldsForStatistics = ['user_id'];
 
+          // execute the constructed query
           return fl_tracks.queryFeatures(queryUserId);
         });
       })
@@ -177,17 +185,24 @@ require([
         console.error(err);
       });
 
+    /**
+     * decompose the query result and get the information the filter needs
+     * @param {*} result returned statistic summary of track features
+     * return a list of user_id, the min and max duration of all the tracks
+     */
     function getInfo(result) {
       try {
         var features = result.features;
         console.log('TCL: getUserId -> features', features);
 
+        // a list of user_ids
         var userIds = features.map(feature => {
           return feature.attributes.user_id;
         });
 
         if (!features) throw 'No track features uploaded';
 
+        // find the global min and max duration of all the tracks
         var min = Number.MAX_VALUE;
         var max = Number.MIN_VALUE;
         features.forEach(feature => {
@@ -204,51 +219,72 @@ require([
           html: error
         });
       }
-
     }
 
+    /**
+     * Parse the acquired information and populate them into filter
+     * @param {list} info 
+     * [0] a list of active user_ids
+     * [1] min duration
+     * [2] max duration
+     */
     function addToFilter(info) {
       console.log('info to filter div');
-      // add user_id to select
+      // the list of user_ids to be added
       var userIds = info[0];
       userIds.sort();
       userIds.forEach(userId => {
+        // for each user_id, create an option within the <select></select>
         console.log('TCL: addToFilter -> userId', userId);
         var option = document.createElement('option');
+        // set the text as the user_id
         option.text = userId;
+        // add the option to filter
         filterUser.add(option);
-        M.FormSelect.init(filterUser);
-        console.log('TCL: addToFilter -> filterUser', filterUser);
       });
+      // reinitialize the dropdown to show the populated user_id
+      M.FormSelect.init(filterUser);
+      console.log('TCL: addToFilter -> filterUser', filterUser);
       console.log('TCL: addToFilter -> filterUser.value', filterUser.value);
 
+      // get the min and max duration from previous result
       var min = info[1];
       var max = info[2];
 
-      if (!info[1]) {
-        min = 0;
-      }
-      if (!info[2]) {
-        max = Number.MAX_VALUE;
+
+      if (!min || !max) {
+        if (!min) {
+          // if min duration is null, set min duration to zero 
+          min = 0;
+        }
+        if (!max) {
+          // if max duration not find, set the maximum value possible
+          max = Number.MAX_VALUE;
+        }
+        // add duration range to slider and populate the min and max value in labels
+        leftLabel.innerHTML = min;
+        rightLabel.innerHTML = max;
+
+        // update the slider to show min and max value
+        // set the start and end of the slider to min and max value
+        slider.noUiSlider.updateOptions({
+          range: {
+            'min': min,
+            'max': max
+          },
+          start: [min, max]
+        });
+        // enable slider
+        slider.removeAttribute('disabled');
       }
 
-      // add duration range to slider
-      leftLabel.innerHTML = min;
-      rightLabel.innerHTML = max;
-
-      slider.noUiSlider.updateOptions({
-        range: {
-          'min': min,
-          'max': max
-        },
-        start: [min, max]
-      });
-      slider.removeAttribute('disabled');
+      // get the selected user_id and duration range
       userId = filterUser.value;
       duration = slider.noUiSlider.get();
       console.log('TCL: addToFilter -> duration', duration);
       minDurationValue = parseInt(duration[0]);
       maxDurationValue = parseInt(duration[1]);
+      // query tracks based on the selected conditions
       return queryTracks(userId, minDurationValue, maxDurationValue);
     }
 
@@ -725,7 +761,6 @@ require([
       }
       queryTracks(userId, minDurationValue, maxDurationValue);
     });
-
 
     // Finally, we want to zoom to the respective line (but only if the query actually retreived one).
     function zoomToLayer(layer) {

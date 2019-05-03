@@ -30,7 +30,7 @@ label {
 }
 
 .select-wrapper input.select-dropdown:focus {
-  border-bottom: 1px solid #ff8a65 !important;
+  border-bottom: 1px solid #ffbf6b !important;
 }
 .select-wrapper input.select-dropdown {
   color: #ffffff !important;
