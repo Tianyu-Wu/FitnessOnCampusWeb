@@ -5,7 +5,6 @@
 let fl_trajectories;
 let fl_tracks;
 let polyline;
-let graphicsLayer;
 let resultLayer;
 
 const text =
@@ -23,13 +22,8 @@ require([
   'esri/Map',
   'esri/views/MapView',
   'esri/layers/FeatureLayer',
-  'esri/layers/GraphicsLayer',
-  'esri/tasks/support/Query',
   'esri/Graphic',
-  'esri/geometry/Point',
   'esri/geometry/Polyline',
-  'esri/symbols/SimpleMarkerSymbol',
-  'esri/symbols/SimpleLineSymbol',
   'esri/widgets/Legend',
   "esri/widgets/Expand",
   'esri/geometry/geometryEngine',
@@ -42,13 +36,8 @@ require([
   Map,
   MapView,
   FeatureLayer,
-  GraphicsLayer,
-  Query,
   Graphic,
-  Point,
   Polyline,
-  SimpleMarkerSymbol,
-  SimpleLineSymbol,
   Legend,
   Expand,
   geometryEngine,
@@ -89,9 +78,6 @@ require([
         'https://services1.arcgis.com/i9MtZ1vtgD3gTnyL/arcgis/rest/services/trajectories/FeatureServer/0',
       visible: false
     });
-
-    // Set up graphicLayer for displaying filtered tracks
-    graphicsLayer = new GraphicsLayer();
 
     var map = new Map({
       basemap: 'osm',
@@ -192,16 +178,18 @@ require([
       });
 
     function getInfo(result) {
-      var features = result.features;
-      console.log('TCL: getUserId -> features', features);
+      try {
+        var features = result.features;
+        console.log('TCL: getUserId -> features', features);
 
-      var userIds = features.map(feature => {
-        return feature.attributes.user_id;
-      });
+        var userIds = features.map(feature => {
+          return feature.attributes.user_id;
+        });
 
-      if (features) {
-        var min = features[0].attributes.min_duration;
-        var max = features[0].attributes.max_duration;
+        if (!features) throw 'No track features uploaded';
+
+        var min = Number.MAX_VALUE;
+        var max = Number.MIN_VALUE;
         features.forEach(feature => {
           if (feature.attributes.min_duration < min) {
             min = feature.attributes.min_duration;
@@ -210,12 +198,13 @@ require([
             max = feature.attributes.max_duration;
           }
         });
-      } else {
+        return [userIds, min, max];
+      } catch (error) {
         M.toast({
-          html: 'No track features uploaded'
+          html: error
         });
       }
-      return [userIds, min, max];
+
     }
 
     function addToFilter(info) {
@@ -233,16 +222,26 @@ require([
       });
       console.log('TCL: addToFilter -> filterUser.value', filterUser.value);
 
+      var min = info[1];
+      var max = info[2];
+
+      if (!info[1]) {
+        min = 0;
+      }
+      if (!info[2]) {
+        max = Number.MAX_VALUE;
+      }
+
       // add duration range to slider
-      leftLabel.innerHTML = info[1];
-      rightLabel.innerHTML = info[2];
+      leftLabel.innerHTML = min;
+      rightLabel.innerHTML = max;
 
       slider.noUiSlider.updateOptions({
         range: {
-          'min': info[1],
-          'max': info[2]
+          'min': min,
+          'max': max
         },
-        start: [info[1], info[2]]
+        start: [min, max]
       });
       slider.removeAttribute('disabled');
       userId = filterUser.value;
@@ -255,7 +254,6 @@ require([
 
     function queryTracks(userId, minDurationValue, maxDurationValue) {
       // clear previous results
-      graphicsLayer.graphics = [];
       trackFeatures = [];
       map.remove(resultLayer);
       fl_trajectories.visible = false;
@@ -282,155 +280,34 @@ require([
       } else if (maxDurationValue) {
         where = 'duration <= ' + maxDurationValue;
       }
-
       query.where = where;
-      console.log('TCL: queryTracks -> where', where);
-
       fl_tracks
         .queryFeatures(query)
         .then(result => {
-          console.log('TCL: result TRACKS', result.features.length);
           var features = result.features;
+
+          if (!features) throw 'No tracks founded!';
 
           var result = new Array();
           features.forEach(feature => {
             if (feature.geometry) {
-              console.log("TCL: queryTracks -> feature", feature)
               var id = feature.attributes.user_id;
               var track = feature.attributes.track_id;
               result.push({ user_id: id, track_id: track });
-              colorCodeTracks(feature);
+              createTrackFeature(feature);
             }
           });
 
           console.log("colorcoded features", features);
           displayResult(result);
-
         })
         .catch(err => {
           console.error(err);
-        });
-    }
-
-    function organizeResults(result) {
-      var resultMap = new Array();
-      result.forEach(item => {
-        var existing = resultMap.filter(function (v, i) {
-          return v.user_id == item.user_id;
-        });
-        if (existing.length) {
-          var existingIndex = resultMap.indexOf(existing[0]);
-          resultMap[existingIndex].track_id = resultMap[
-            existingIndex
-          ].track_id.concat(item.track_id);
-        } else {
-          if (typeof item.track_id == 'number') item.track_id = [item.track_id];
-          resultMap.push(item);
-        }
-      });
-
-      // ids.forEach((id, i) => {
-      //   resultMap.id = result[i];
-      // });
-      console.log('TCL: queryTracks -> result', result);
-      // console.log('TCL: queryTracks -> resultMap', resultMap);
-      return resultMap;
-    }
-
-    function queryTrajectories(resultMap) {
-      console.log('query trajectories');
-      // construct sql query and renderer
-      var tRenderer = new UniqueValueRenderer();
-      var sql = '';
-      if (resultMap.length == 1) {
-        // only one user_id
-        // construct sql that combines conditions on user_id and tracks
-        sql = combineQueryWithUserTrack(resultMap[0]);
-        // create uniqueValueRenderer for trajectory on field track_id
-        tRenderer.field = 'track_id';
-        var tracks = resultMap[0].track_id;
-        tracks.forEach(track => {
-          tRenderer.addUniqueValueInfo({
-            value: track,
-            symbol: {
-              type: 'simple-marker', // autocasts as new SimpleFillSymbol()
-              size: 5,
-              color: randomColor(),
-              outline: null
-            },
-            label: "Track " + track
+          M.toast({
+            html: err
           });
         });
-      } else {
-        // multiple user_ids -- create uniqueValueRenderer for trajectory on field user_id
-        tRenderer.field = 'user_id';
-        for (let i = 0; i < resultMap.length; i++) {
-          const entry = resultMap[i];
-          sql += combineQueryWithUserTrack(entry);
-          if (i != resultMap.length - 1) {
-            sql += ' OR ';
-          }
-          tRenderer.addUniqueValueInfo({
-            value: entry.user_id,
-            symbol: {
-              type: 'simple-marker', // autocasts as new SimpleFillSymbol()
-              size: 5,
-              color: randomColor(),
-              outline: null
-            },
-            label: "User " + entry.user_id
-          });
-        }
-      }
-
-      console.log('TCL: queryTrajectories -> sql', sql);
-
-      // query trajectories based on constructed sql and render the layer with defined tRenderer
-      fl_trajectories.definitionExpression = sql;
-      fl_trajectories.renderer = tRenderer;
-      // display query result
-      if (!fl_trajectories.visible) fl_trajectories.visible = true;
-      // add legend
-      fl_trajectories.when(() => {
-        console.log("trajectory layer loaded");
-        refreshLegend();
-      })
     }
-
-    function combineQueryWithUserTrack(result) {
-      var sql = '(user_id = ' + result.user_id + ' AND track_id IN (';
-      var trackIds = result.track_id;
-      for (let i = 0; i < trackIds.length; i++) {
-        if (i === trackIds.length - 1) sql += trackIds[i] + '))';
-        else sql += trackIds[i] + ',';
-      }
-      return sql;
-    }
-
-    function randomColor() {
-      var letters = '0123456789ABCDEF';
-      var color = '#';
-      for (var i = 0; i < 6; i++) {
-        color += letters[Math.floor(Math.random() * 16)];
-      }
-      return color;
-    }
-
-    filterUser.addEventListener('change', () => {
-      console.log('select changed');
-      userId = event.target.value;
-      queryTracks(userId, minDurationValue, maxDurationValue);
-    });
-
-    slider.noUiSlider.on('change', function (values, handle) {
-      console.log('on slider change');
-      if (handle == 0) {
-        minDurationValue = values[handle];
-      } else {
-        maxDurationValue = values[handle];
-      }
-      queryTracks(userId, minDurationValue, maxDurationValue);
-    });
 
     var distanceSum = {
       onStatisticField: 'Shape__Length', // length
@@ -452,17 +329,6 @@ require([
       .then(result => {
         console.log('number of users', result.features.length);
         var users = result.features;
-        users.forEach(user => {
-          var stats = user.attributes;
-          console.log('LEADERBOARD STATS FOR', stats.user_id);
-          console.log(' total distance', stats.total_length);
-          console.log(' total duration', stats.total_duration);
-          console.log(
-            ' leaderboard score',
-            stats.total_length * 10 + stats.total_duration
-          );
-        });
-
         var leaderboard = users.map(user => {
           return [user.attributes.user_id, user.attributes.total_length, user.attributes.total_duration, user.attributes.total_length * 10 + user.attributes.total_duration];
         })
@@ -471,20 +337,19 @@ require([
         leaderboard.sort(function (a, b) {
           return b[3] - a[3];
         });
-
-        console.log("TCL: leaderboard AFTER SORT", leaderboard)
-
         populateLeaderboard(leaderboard);
-
       })
       .catch(err => {
         console.error(err);
+        M.toast({
+          html: err
+        });
       });
 
     function populateLeaderboard(leaderboard) {
-      if (leaderboard) {
+      try {
+        if (!leaderboard) throw 'No information found';
         leaderboard.forEach(entry => {
-          console.log("TCL: populateLeaderboard -> entry", entry)
           var li = document.createElement('li');
           li.className = "collection-item avatar";
           var img = document.createElement('img');
@@ -513,11 +378,8 @@ require([
           div.appendChild(rank);
           li.appendChild(div);
           collection.appendChild(li);
-          console.log("TCL: populateLeaderboard -> collection", collection)
-
         });
-      }
-      else {
+      } catch (error) {
         M.toast({
           html: 'No track features uploaded'
         });
@@ -572,25 +434,9 @@ require([
       return [start, end];
     }
 
-    function colorCodeTracks(polyline) {
-      console.log('color code tracks');
+    function createTrackFeature(polyline) {
       var segments = polyline.geometry.paths[0];
       const sr = polyline.geometry.spatialReference;
-      var slowSymbol = new SimpleLineSymbol({
-        color: [115, 192, 91],
-        width: 4,
-        cap: 'round'
-      });
-      var moderateSymbol = new SimpleLineSymbol({
-        color: [255, 154, 8],
-        width: 4,
-        cap: 'round'
-      });
-      var fastSymbol = new SimpleLineSymbol({
-        color: [255, 73, 0],
-        width: 4,
-        cap: 'round'
-      });
 
       var start_end = findStartEnd(
         segments[0],
@@ -598,14 +444,7 @@ require([
         sr
       );
 
-      var popupTemplate = {
-        title: 'Track <b>{track_id}</b> of User <b>{user_id}</b>',
-        content:
-          '<ul><li>Start POI: {start_poi}</li><li>End POI: {end_poi}</li><li>Duration: {duration}</li><li>Total Length: {length}</li><li>Score Earned: {score}</li></ul>'
-      };
-
       for (let i = 0; i < segments.length - 1; i++) {
-        console.log("TRACK FEATURE LENGTH", trackFeatures.length);
         var subline = new Polyline({
           paths: [segments[i], segments[i + 1]],
           spatialReference: sr
@@ -624,201 +463,269 @@ require([
           speed: dist
         };
 
-        var g = new Graphic({
-          geometry: subline,
-          attributes: attributes,
-          popupTemplate: popupTemplate
-        });
-
         var t = new Graphic({
           geometry: subline,
           attributes: attributes
         });
         trackFeatures.push(t);
-
-        // console.log('TCL: colorCodeTracks -> dist', dist);
-        if (dist < 10) {
-          g.symbol = slowSymbol;
-        } else if (dist < 16.5) {
-          g.symbol = moderateSymbol;
-        } else {
-          g.symbol = fastSymbol;
-        }
-        graphicsLayer.graphics.add(g);
       }
+    }
+
+    function randomColor() {
+      var letters = '0123456789ABCDEF';
+      var color = '#';
+      for (var i = 0; i < 6; i++) {
+        color += letters[Math.floor(Math.random() * 16)];
+      }
+      return color;
     }
 
     function displayResult(result) {
-      //create a feature collection for trackfeatures
-      var popupTemplate = {
-        title: 'Track <b>{track_id}</b> of User <b>{user_id}</b>',
-        content:
-          '<ul><li>Start POI: {start_poi}</li><li>End POI: {end_poi}</li><li>Total Duration: {duration}</li><li>Total Length: {length}</li><li>Speed: {speed}</li><li>Score Earned: {score}</li></ul>'
-      };
-
-      console.log("TRACK FEATURES: ", trackFeatures);
-
-      const slowSymbol = {
-        type: "simple-line", // autocasts as new SimpleLineSymbol()
-        color: [115, 192, 91],
-        width: "3px",
-        style: "solid",
-        cap: 'round'
-      };
-      const moderateSymbol = {
-        type: "simple-line", // autocasts as new SimpleLineSymbol()
-        color: [255, 154, 8],
-        width: "3px",
-        style: "solid",
-        cap: 'round'
-      };
-      const fastSymbol = {
-        type: "simple-line", // autocasts as new SimpleLineSymbol()
-        color: [255, 73, 0],
-        width: "3px",
-        style: "solid",
-        cap: 'round'
-      };
-      const defaultSymbol = {
-        type: "simple-line", // autocasts as new SimpleLineSymbol()
-        color: [139, 139, 139],
-        width: "3px",
-        style: "solid",
-        cap: 'round'
-      }
-
-      trackRenderer = new ClassBreaksRenderer({
-        field: "speed",
-        legendOptions: {
-          title: "Speed"
-        },
-        defaultSymbol: defaultSymbol,
-        defaultLabel: "unknown",
-        classBreakInfos: [
-          {
-            symbol: slowSymbol,
-            label: "0 to 10",
-            minValue: 0,
-            maxValue: 10
-          },
-          {
-            symbol: moderateSymbol,
-            label: "10 to 16.5",
-            minValue: 10,
-            maxValue: 16.5
-          },
-          {
-            symbol: fastSymbol,
-            label: "> 16.5",
-            minValue: 16.5,
-            maxValue: 310
-          }
-        ]
-      });
-
-      var fields = [new Field({
-        name: "FID",
-        alias: "FID",
-        type: "oid"
-      }), new Field({
-        name: "duration",
-        alias: "duration",
-        type: "double"
-      }),
-      new Field({
-        name: "end_poi",
-        alias: "end_poi",
-        type: "string"
-      }),
-      new Field({
-        name: "length",
-        alias: "length",
-        type: "double"
-      }),
-      new Field({
-        name: "score",
-        alias: "score",
-        type: "double"
-      }), new Field({
-        name: "speed",
-        alias: "speed",
-        type: "double"
-      }),
-      new Field({
-        name: "start_poi",
-        alias: "start_poi",
-        type: "string"
-      }),
-      new Field({
-        name: "track_id",
-        alias: "track_id",
-        type: "double"
-      }),
-      new Field({
-        name: "user_id",
-        alias: "user_id",
-        type: "integer"
-      })
-      ];
-
-      console.log("create featurelayer for track features");
-      resultLayer = new FeatureLayer({
-        popupTemplate: popupTemplate,
-        fields: fields,
-        objectIdField: "FID",
-        source: trackFeatures,
-        renderer: trackRenderer
-      });
-      map.add(resultLayer, 0);
-      resultLayer.when(() => {
-        var max_speed = {
-          onStatisticField: 'speed',
-          outStatisticFieldName: 'max_speed',
-          statisticType: 'max'
-        };
-        var minSpeed = {
-          onStatisticField: 'speed',
-          outStatisticFieldName: 'min_speed',
-          statisticType: 'min'
+      try {
+        if (result.length == 0) throw 'No reasonable track features found';
+        //create a feature collection for trackfeatures
+        var popupTemplate = {
+          title: 'Track <b>{track_id}</b> of User <b>{user_id}</b>',
+          content:
+            '<ul><li>Start POI: {start_poi}</li><li>End POI: {end_poi}</li><li>Total Duration: {duration}</li><li>Total Length: {length}</li><li>Speed: {speed}</li><li>Score Earned: {score}</li></ul>'
         };
 
-        var query = resultLayer.createQuery();
-        query.outStatistics = [minSpeed, max_speed];
+        const slowSymbol = {
+          type: "simple-line", // autocasts as new SimpleLineSymbol()
+          color: [115, 192, 91],
+          width: "3px",
+          style: "solid",
+          cap: 'round'
+        };
+        const moderateSymbol = {
+          type: "simple-line", // autocasts as new SimpleLineSymbol()
+          color: [255, 154, 8],
+          width: "3px",
+          style: "solid",
+          cap: 'round'
+        };
+        const fastSymbol = {
+          type: "simple-line", // autocasts as new SimpleLineSymbol()
+          color: [255, 73, 0],
+          width: "3px",
+          style: "solid",
+          cap: 'round'
+        };
+        const defaultSymbol = {
+          type: "simple-line", // autocasts as new SimpleLineSymbol()
+          color: [139, 139, 139],
+          width: "3px",
+          style: "solid",
+          cap: 'round'
+        }
 
-        resultLayer.queryFeatures(query).then((result) => {
-          console.log(result.features);
-        }).catch((err) => {
-
+        trackRenderer = new ClassBreaksRenderer({
+          field: "speed",
+          legendOptions: {
+            title: "Speed"
+          },
+          defaultSymbol: defaultSymbol,
+          defaultLabel: "unknown",
+          classBreakInfos: [
+            {
+              symbol: slowSymbol,
+              label: "0 to 10",
+              minValue: 0,
+              maxValue: 10
+            },
+            {
+              symbol: moderateSymbol,
+              label: "10 to 16.5",
+              minValue: 10,
+              maxValue: 16.5
+            },
+            {
+              symbol: fastSymbol,
+              label: "> 16.5",
+              minValue: 16.5,
+              maxValue: 310
+            }
+          ]
         });
-        console.log("renderer", resultLayer.renderer);
-        // resultLayer.renderer = trackRenderer;
-        console.log("renderer", resultLayer.renderer);
-      })
 
-      if (result.length == 0) {
-        M.toast({
-          html: 'No reasonable track features found'
+        var fields = [new Field({
+          name: "FID",
+          alias: "FID",
+          type: "oid"
+        }), new Field({
+          name: "duration",
+          alias: "duration",
+          type: "double"
+        }),
+        new Field({
+          name: "end_poi",
+          alias: "end_poi",
+          type: "string"
+        }),
+        new Field({
+          name: "length",
+          alias: "length",
+          type: "double"
+        }),
+        new Field({
+          name: "score",
+          alias: "score",
+          type: "double"
+        }), new Field({
+          name: "speed",
+          alias: "speed",
+          type: "double"
+        }),
+        new Field({
+          name: "start_poi",
+          alias: "start_poi",
+          type: "string"
+        }),
+        new Field({
+          name: "track_id",
+          alias: "track_id",
+          type: "double"
+        }),
+        new Field({
+          name: "user_id",
+          alias: "user_id",
+          type: "integer"
+        })
+        ];
+
+        console.log("create featurelayer for track features");
+        resultLayer = new FeatureLayer({
+          popupTemplate: popupTemplate,
+          fields: fields,
+          objectIdField: "FID",
+          source: trackFeatures,
+          renderer: trackRenderer
         });
-      } else {
+        map.add(resultLayer, 0);
+
+        // zoom to resultlayer
+        zoomToLayer(resultLayer);
+
         var resultMap = organizeResults(result);
-        console.log('TCL: queryTracks -> resultMap', resultMap);
         queryTrajectories(resultMap);
+      } catch (error) {
+        M.toast({
+          html: error
+        });
       }
-
     }
 
-    // Finally, we want to zoom to the respective line (but only if the query actually retreived one).
-    const query = new Query();
-    query.where = queryString;
-    fl_tracks.queryFeatureCount(query).then(function (numResults) {
-      if (numResults > 0) {
-        fl_tracks
-          .when(function () {
-            return fl_tracks.queryExtent();
-          })
-          .then(function (response) {
-            view.goTo(response.extent);
+    function organizeResults(result) {
+      var resultMap = new Array();
+      result.forEach(item => {
+        var existing = resultMap.filter(function (v, i) {
+          return v.user_id == item.user_id;
+        });
+        if (existing.length) {
+          var existingIndex = resultMap.indexOf(existing[0]);
+          resultMap[existingIndex].track_id = resultMap[
+            existingIndex
+          ].track_id.concat(item.track_id);
+        } else {
+          if (typeof item.track_id == 'number') item.track_id = [item.track_id];
+          resultMap.push(item);
+        }
+      });
+      return resultMap;
+    }
+
+    function queryTrajectories(resultMap) {
+      console.log('query trajectories');
+      // construct sql query and renderer
+      var tRenderer = new UniqueValueRenderer();
+      var sql = '';
+      if (resultMap.length == 1) {
+        // only one user_id
+        // construct sql that combines conditions on user_id and tracks
+        sql = combineQueryWithUserTrack(resultMap[0]);
+        // create uniqueValueRenderer for trajectory on field track_id
+        tRenderer.field = 'track_id';
+        var tracks = resultMap[0].track_id;
+
+        tracks.forEach(track => {
+          tRenderer.addUniqueValueInfo({
+            value: track,
+            symbol: {
+              type: 'simple-marker', // autocasts as new SimpleFillSymbol()
+              size: 5,
+              color: randomColor(),
+              outline: null
+            },
+            label: "Track " + track
           });
+        });
+      } else {
+        // multiple user_ids -- create uniqueValueRenderer for trajectory on field user_id
+        tRenderer.field = 'user_id';
+        for (let i = 0; i < resultMap.length; i++) {
+          const entry = resultMap[i];
+          sql += combineQueryWithUserTrack(entry);
+          if (i != resultMap.length - 1) {
+            sql += ' OR ';
+          }
+          tRenderer.addUniqueValueInfo({
+            value: entry.user_id,
+            symbol: {
+              type: 'simple-marker', // autocasts as new SimpleFillSymbol()
+              size: 5,
+              color: randomColor(),
+              outline: null
+            },
+            label: "User " + entry.user_id
+          });
+        }
       }
+
+      console.log('TCL: queryTrajectories -> sql', sql);
+
+      // query trajectories based on constructed sql and render the layer with defined tRenderer
+      fl_trajectories.definitionExpression = sql;
+      fl_trajectories.renderer = tRenderer;
+      // display query result
+      if (!fl_trajectories.visible) fl_trajectories.visible = true;
+      // refresh legend
+      fl_trajectories.when(() => {
+        console.log("trajectory layer loaded");
+        refreshLegend();
+      })
+    }
+
+    function combineQueryWithUserTrack(result) {
+      var sql = '(user_id = ' + result.user_id + ' AND track_id IN (';
+      var trackIds = result.track_id;
+      for (let i = 0; i < trackIds.length; i++) {
+        if (i === trackIds.length - 1) sql += trackIds[i] + '))';
+        else sql += trackIds[i] + ',';
+      }
+      return sql;
+    }
+
+    filterUser.addEventListener('change', () => {
+      console.log('select changed');
+      userId = event.target.value;
+      queryTracks(userId, minDurationValue, maxDurationValue);
     });
+
+    slider.noUiSlider.on('change', function (values, handle) {
+      console.log('on slider change');
+      if (handle == 0) {
+        minDurationValue = values[handle];
+      } else {
+        maxDurationValue = values[handle];
+      }
+      queryTracks(userId, minDurationValue, maxDurationValue);
+    });
+
+
+    // Finally, we want to zoom to the respective line (but only if the query actually retreived one).
+    function zoomToLayer(layer) {
+      return layer.queryExtent().then(function (response) {
+        view.goTo(response.extent);
+      });
+    }
   });
