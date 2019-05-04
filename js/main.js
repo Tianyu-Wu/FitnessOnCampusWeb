@@ -288,6 +288,15 @@ require([
       return queryTracks(userId, minDurationValue, maxDurationValue);
     }
 
+    /**
+     * query tracks with respect to currently selected user_id and duration range
+     * when no user_id is selected (select the "choose all user_id" option), 
+     * query for all tracks within the duration range
+     * 
+     * @param {numbers} userId the selected user_id, if select "choose all user_id", the value is null
+     * @param {double} minDurationValue lower bound for duration
+     * @param {double} maxDurationValue upper bound for duration
+     */
     function queryTracks(userId, minDurationValue, maxDurationValue) {
       // clear previous results
       trackFeatures = [];
@@ -295,46 +304,42 @@ require([
       fl_trajectories.visible = false;
       console.log('query tracks');
 
+      // set default query to show all the tracks within duration range
       const query = {
         outFields: ['*'],
         returnGeometry: true
       };
-      var where = '1=1';
+      var where = 'duration >= ' + minDurationValue + ' AND duration <= ' + maxDurationValue;
+
+      // if have selected a user_id, add user_id condition to default query
       if (userId) {
-        where = 'user_id = ' + userId;
-        if (minDurationValue) {
-          where += 'AND duration >= ' + minDurationValue;
-        }
-        if (maxDurationValue) {
-          where += 'AND duration <= ' + maxDurationValue;
-        }
-      } else if (maxDurationValue) {
-        where = 'duration >= ' + minDurationValue;
-        if (maxDurationValue) {
-          where += 'AND duration <= ' + maxDurationValue;
-        }
-      } else if (maxDurationValue) {
-        where = 'duration <= ' + maxDurationValue;
+        where += ' AND user_id = ' + userId;
       }
+
       query.where = where;
+      console.log("TCL: queryTracks -> where", where)
+      // query track features with constructed query
       fl_tracks
         .queryFeatures(query)
         .then(result => {
           var features = result.features;
-
+          // if no features returned, notify the user
           if (!features) throw 'No tracks founded!';
-
+          // create an array storing returned user_id and track_id
           var result = new Array();
           features.forEach(feature => {
+            // only show tracks with geometry
             if (feature.geometry) {
               var id = feature.attributes.user_id;
               var track = feature.attributes.track_id;
               result.push({ user_id: id, track_id: track });
+              // split each track into individual segments
               createTrackFeature(feature);
             }
           });
 
           console.log("colorcoded features", features);
+          // display queried tracks with speed color-coding style
           displayResult(result);
         })
         .catch(err => {
@@ -345,90 +350,71 @@ require([
         });
     }
 
-    var distanceSum = {
-      onStatisticField: 'Shape__Length', // length
-      outStatisticFieldName: 'total_length',
-      statisticType: 'sum'
-    };
-    var durationSum = {
-      onStatisticField: 'duration', // length
-      outStatisticFieldName: 'total_duration',
-      statisticType: 'sum'
-    };
+    /**
+     * split the track into each individual segments, create a graphic for each segment and add to trackFeature list 
+     * @param {feature} polyline a polyline feature
+     */
+    function createTrackFeature(polyline) {
+      // get the paths of the track (a list of points that constructs the polyline feature)
+      var segments = polyline.geometry.paths[0];
+      // denotes the spatial reference of the feature
+      const sr = polyline.geometry.spatialReference;
 
-    const statQuery = fl_tracks.createQuery();
-    statQuery.outStatistics = [distanceSum, durationSum];
-    statQuery.groupByFieldsForStatistics = ['user_id'];
+      // find the start and end poi of the track
+      var start_end = findStartEnd(
+        segments[0],
+        segments[segments.length - 1],
+        sr
+      );
 
-    fl_tracks
-      .queryFeatures(statQuery)
-      .then(result => {
-        console.log('number of users', result.features.length);
-        var users = result.features;
-        var leaderboard = users.map(user => {
-          return [user.attributes.user_id, user.attributes.total_length, user.attributes.total_duration, user.attributes.total_length * 10 + user.attributes.total_duration];
-        })
+      // loop through segments and create a line feature for each two consecutive points
+      for (let i = 0; i < segments.length - 1; i++) {
+        // create a polyline with same spatial reference as the original
+        var subline = new Polyline({
+          paths: [segments[i], segments[i + 1]],
+          spatialReference: sr
+        });
+        // as the intervals of all trajectory points are the same, the speed of each segment is indicated by the distance between two points
+        var dist = geometryEngine.geodesicLength(subline, 'meters');
 
-        // sort leaderboard by score
-        leaderboard.sort(function (a, b) {
-          return b[3] - a[3];
-        });
-        populateLeaderboard(leaderboard);
-      })
-      .catch(err => {
-        console.error(err);
-        M.toast({
-          html: err
-        });
-      });
+        // populate attributes for the newly created feature
+        var attributes = {
+          FID: trackFeatures.length,
+          user_id: polyline.attributes.user_id,
+          track_id: polyline.attributes.track_id,
+          duration: polyline.attributes.duration,
+          length: polyline.attributes.Shape__Length,
+          score:
+            polyline.attributes.Shape__Length * 10 + polyline.attributes.duration,
+          start_poi: start_end[0],
+          end_poi: start_end[1],
+          speed: dist
+        };
 
-    function populateLeaderboard(leaderboard) {
-      try {
-        if (!leaderboard) throw 'No information found';
-        leaderboard.forEach(entry => {
-          var li = document.createElement('li');
-          li.className = "collection-item avatar";
-          var img = document.createElement('img');
-          img.src = "https://source.unsplash.com/50x50/?friends/" + (leaderboard.indexOf(entry) + 1);
-          img.className = "circle responsive-img";
-          li.appendChild(img);
-          var span = document.createElement('span');
-          span.className = "title";
-          span.innerHTML = "User " + entry[0];
-          li.appendChild(span);
-          var p1 = document.createElement('p');
-          p1.innerHTML = "Total Distance: " + parseFloat(entry[1]).toFixed(2);
-          li.appendChild(p1);
-          var p2 = document.createElement('p');
-          p2.innerHTML = "Total Duration: " + entry[2];
-          li.appendChild(p2);
-          var div = document.createElement('div');
-          div.className = "secondary-content deep-orange-text text-lighten-1";
-          var p3 = document.createElement('p');
-          p3.innerHTML = parseFloat(entry[3]).toFixed(2);
-          p3.className = "flow-text";
-          div.appendChild(p3);
-          var rank = document.createElement('h6');
-          rank.innerHTML = "RANK " + (leaderboard.indexOf(entry) + 1);
-          rank.className = "right-align";
-          div.appendChild(rank);
-          li.appendChild(div);
-          collection.appendChild(li);
+        // combines polyline geometry and attributes
+        var t = new Graphic({
+          geometry: subline,
+          attributes: attributes
         });
-      } catch (error) {
-        M.toast({
-          html: 'No track features uploaded'
-        });
+        // add the graphic to the list
+        trackFeatures.push(t);
       }
     }
 
+    /**
+     * find the start and end poi of the track
+     * @param {list of doubles} start_coord the [x, y] coordinates of the first trajectory point of the track
+     * @param {list of doubles} end_coord the [x, y] coordinates of the last trajectory point of the track
+     * @param {*} spatial_reference spatial reference of the coordinate
+     */
     function findStartEnd(start_coord, end_coord, spatial_reference) {
+      // get the x, y coordinates of the poi
       var currentPoi = webMercatorUtils.lngLatToXY(
         poi[0].longitude,
         poi[0].latitude
       );
-      // console.log('TCL: findStartEnd -> currentPoi projected', currentPoi);
 
+      // create two polylines that connects current poi and the start/end trajectory points for distance calculation
       var toStart = new Polyline({
         paths: [start_coord, currentPoi],
         spatialReference: spatial_reference
@@ -439,11 +425,14 @@ require([
         spatialReference: spatial_reference
       });
 
+      // initialize the min and max distance with the first poi
       var minStartDist = geometryEngine.geodesicLength(toStart, 'meters');
       var minEndDist = geometryEngine.geodesicLength(toEnd, 'meters');
+      // keep track of the poi names
       var start = poi[0].name;
       var end = poi[0].name;
 
+      // loop through the rest pois and find the two pois that are closest to the start and end trajectory points
       for (let i = 1; i < poi.length; i++) {
         currentPoi = webMercatorUtils.lngLatToXY(
           poi[i].longitude,
@@ -467,65 +456,29 @@ require([
         }
       }
 
+      // return the start and end poi name
       return [start, end];
     }
-
-    function createTrackFeature(polyline) {
-      var segments = polyline.geometry.paths[0];
-      const sr = polyline.geometry.spatialReference;
-
-      var start_end = findStartEnd(
-        segments[0],
-        segments[segments.length - 1],
-        sr
-      );
-
-      for (let i = 0; i < segments.length - 1; i++) {
-        var subline = new Polyline({
-          paths: [segments[i], segments[i + 1]],
-          spatialReference: sr
-        });
-        var dist = geometryEngine.geodesicLength(subline, 'meters');
-        var attributes = {
-          FID: trackFeatures.length,
-          user_id: polyline.attributes.user_id,
-          track_id: polyline.attributes.track_id,
-          duration: polyline.attributes.duration,
-          length: polyline.attributes.Shape__Length,
-          score:
-            polyline.attributes.Shape__Length * 10 + polyline.attributes.duration,
-          start_poi: start_end[0],
-          end_poi: start_end[1],
-          speed: dist
-        };
-
-        var t = new Graphic({
-          geometry: subline,
-          attributes: attributes
-        });
-        trackFeatures.push(t);
-      }
-    }
-
-    function randomColor() {
-      var letters = '0123456789ABCDEF';
-      var color = '#';
-      for (var i = 0; i < 6; i++) {
-        color += letters[Math.floor(Math.random() * 16)];
-      }
-      return color;
-    }
-
+    /**
+     * display the queried track features with a speed color-coding style 
+     * and query for corresponding trajectory features
+     * @param {list} result 
+     */
     function displayResult(result) {
       try {
+        // if none of the return tracks has geometry, notify users
         if (result.length == 0) throw 'No reasonable track features found';
-        //create a feature collection for trackfeatures
+
+        // create track featurelayer from a collection for graphics
+        // define popup template that shows track id, user id, start and end poi, total duration and speed of the segment
         var popupTemplate = {
           title: 'Track <b>{track_id}</b> of User <b>{user_id}</b>',
           content:
             '<ul><li>Start POI: {start_poi}</li><li>End POI: {end_poi}</li><li>Total Duration: {duration}</li><li>Total Length: {length}</li><li>Speed: {speed}</li><li>Score Earned: {score}</li></ul>'
         };
 
+        // define a symbology for different classes of speed
+        // segments with lower speed is represented in green
         const slowSymbol = {
           type: "simple-line", // autocasts as new SimpleLineSymbol()
           color: [115, 192, 91],
@@ -533,6 +486,7 @@ require([
           style: "solid",
           cap: 'round'
         };
+        // segments with moderate speed are represented in orange
         const moderateSymbol = {
           type: "simple-line", // autocasts as new SimpleLineSymbol()
           color: [255, 154, 8],
@@ -540,6 +494,7 @@ require([
           style: "solid",
           cap: 'round'
         };
+        // segments with higher speed are represent in red
         const fastSymbol = {
           type: "simple-line", // autocasts as new SimpleLineSymbol()
           color: [255, 73, 0],
@@ -547,6 +502,7 @@ require([
           style: "solid",
           cap: 'round'
         };
+        // segments without speed information are represented in grey
         const defaultSymbol = {
           type: "simple-line", // autocasts as new SimpleLineSymbol()
           color: [139, 139, 139],
@@ -554,7 +510,7 @@ require([
           style: "solid",
           cap: 'round'
         }
-
+        // define a classBreak renderer that color-codes the segments based on speed
         trackRenderer = new ClassBreaksRenderer({
           field: "speed",
           legendOptions: {
@@ -584,41 +540,42 @@ require([
           ]
         });
 
+        // define the field of the featurelayer
         var fields = [new Field({
           name: "FID",
           alias: "FID",
           type: "oid"
         }), new Field({
-          name: "duration",
+          name: "duration", // denotes the total duration of the track that this segment belongs to
           alias: "duration",
           type: "double"
         }),
         new Field({
-          name: "end_poi",
+          name: "end_poi", // denotes the end of the track that this segment belongs to
           alias: "end_poi",
           type: "string"
         }),
         new Field({
-          name: "length",
+          name: "length", // the length denotes the total length of the track that this segment belongs to
           alias: "length",
           type: "double"
         }),
         new Field({
-          name: "score",
+          name: "score", // the score denotes the score earned for the track that this segment belongs to
           alias: "score",
           type: "double"
         }), new Field({
-          name: "speed",
+          name: "speed", // denotes the speed of this segment
           alias: "speed",
           type: "double"
         }),
         new Field({
-          name: "start_poi",
+          name: "start_poi", // denotes the start of the track that this segment belongs to
           alias: "start_poi",
           type: "string"
         }),
         new Field({
-          name: "track_id",
+          name: "track_id", // denotes the track_id that this segment belongs to
           alias: "track_id",
           type: "double"
         }),
@@ -630,6 +587,7 @@ require([
         ];
 
         console.log("create featurelayer for track features");
+        // create resultlayer from a collection of track segments
         resultLayer = new FeatureLayer({
           popupTemplate: popupTemplate,
           fields: fields,
@@ -637,12 +595,15 @@ require([
           source: trackFeatures,
           renderer: trackRenderer
         });
+        // add the resultlayer to the map under the layer of trajectory
         map.add(resultLayer, 0);
 
         // zoom to resultlayer
         zoomToLayer(resultLayer);
 
+        // get the pair of user_id and its track_id list
         var resultMap = organizeResults(result);
+        // query for corresponding trajectory points
         queryTrajectories(resultMap);
       } catch (error) {
         M.toast({
@@ -651,6 +612,13 @@ require([
       }
     }
 
+    /**
+     * merge track_ids into a list of track_id for each user_id
+     * 
+     * @param {list of user_id and track_id} result 
+     * result: [{user_id: 1, track_id: 1}, {user_id: 1, track_id: 2}, {user_id: 2, track_id: 1}]
+     * resultMap: [{user_id: 1, track_id:[1, 2]}, {user_id: 2, track_id: 1}]
+     */
     function organizeResults(result) {
       var resultMap = new Array();
       result.forEach(item => {
@@ -670,6 +638,10 @@ require([
       return resultMap;
     }
 
+    /**
+     * query for trajectory points correspond to the filtered tracks
+     * @param {list of user_id and track_ids} resultMap 
+     */
     function queryTrajectories(resultMap) {
       console.log('query trajectories');
       // construct sql query and renderer
@@ -683,6 +655,7 @@ require([
         tRenderer.field = 'track_id';
         var tracks = resultMap[0].track_id;
 
+        // if only one user_id, render trajectory points on track_id
         tracks.forEach(track => {
           tRenderer.addUniqueValueInfo({
             value: track,
@@ -731,11 +704,17 @@ require([
           // prints the total count to the console
           console.log("number of trajectories: " + numFeatures);
         });
-
+        // refresh the legend to show latest symbology of trajectory layer
         refreshLegend();
       })
     }
 
+    /**
+     * construct sql for a pair of user_id and track_ids
+     * @param {key-value map of user_id and a list of track_ids} result 
+     * e.g. result: {user_id: 1, track_id: [1, 2, 3, 4]}
+     *      sql: user_id = 1 AND track_id IN (1, 2, 3, 4)
+     */
     function combineQueryWithUserTrack(result) {
       var sql = '(user_id = ' + result.user_id + ' AND track_id IN (';
       var trackIds = result.track_id;
@@ -746,14 +725,126 @@ require([
       return sql;
     }
 
+    /**
+     * generate random color
+     */
+    function randomColor() {
+      var letters = '0123456789ABCDEF';
+      var color = '#';
+      for (var i = 0; i < 6; i++) {
+        color += letters[Math.floor(Math.random() * 16)];
+      }
+      return color;
+    }
+
+    // get information for leaderboard
+    // construct statistic query for total length
+    var distanceSum = {
+      onStatisticField: 'Shape__Length', // length
+      outStatisticFieldName: 'total_length',
+      statisticType: 'sum'
+    };
+    // construct statistic query for total duration
+    var durationSum = {
+      onStatisticField: 'duration', // length
+      outStatisticFieldName: 'total_duration',
+      statisticType: 'sum'
+    };
+
+    // construct query that calculates the total length and total duration for each user_id
+    const statQuery = fl_tracks.createQuery();
+    statQuery.outStatistics = [distanceSum, durationSum];
+    statQuery.groupByFieldsForStatistics = ['user_id'];
+
+    // query on track features
+    fl_tracks
+      .queryFeatures(statQuery)
+      .then(result => {
+        console.log('number of users', result.features.length);
+        var users = result.features;
+        // get a list of user_id, total_length, total_duration and calculated scores with previous two fields
+        var leaderboard = users.map(user => {
+          return [user.attributes.user_id, user.attributes.total_length, user.attributes.total_duration, user.attributes.total_length * 10 + user.attributes.total_duration];
+        })
+
+        // sort leaderboard by score in descending order
+        leaderboard.sort(function (a, b) {
+          return b[3] - a[3];
+        });
+        // populate information into the leaderboard section in HTML and show on web
+        populateLeaderboard(leaderboard);
+      })
+      .catch(err => {
+        console.error(err);
+        M.toast({
+          html: err
+        });
+      });
+
+    /**
+     * populate information into the leaderboard section in HTML and show on web
+     * the result will show as an avatar collections
+     * @param {list of user_id, total_length, total_duration and score} leaderboard
+     * e.g. leaderboard: [1, 100.23, 23456, 24458.3]
+     */
+    function populateLeaderboard(leaderboard) {
+      try {
+        if (!leaderboard) throw 'No information found';
+        leaderboard.forEach(entry => {
+          var li = document.createElement('li');
+          li.className = "collection-item avatar";
+          var img = document.createElement('img');
+          img.src = "https://source.unsplash.com/50x50/?friends/" + (leaderboard.indexOf(entry) + 1);
+          img.className = "circle responsive-img";
+          li.appendChild(img);
+          var span = document.createElement('span');
+          span.className = "title";
+          span.innerHTML = "User " + entry[0];
+          li.appendChild(span);
+          var p1 = document.createElement('p');
+          p1.innerHTML = "Total Distance: " + parseFloat(entry[1]).toFixed(2);
+          li.appendChild(p1);
+          var p2 = document.createElement('p');
+          p2.innerHTML = "Total Duration: " + entry[2];
+          li.appendChild(p2);
+          var div = document.createElement('div');
+          div.className = "secondary-content deep-orange-text text-lighten-1";
+          var p3 = document.createElement('p');
+          p3.innerHTML = parseFloat(entry[3]).toFixed(2);
+          p3.className = "flow-text";
+          div.appendChild(p3);
+          var rank = document.createElement('h6');
+          rank.innerHTML = "RANK " + (leaderboard.indexOf(entry) + 1);
+          rank.className = "right-align";
+          div.appendChild(rank);
+          li.appendChild(div);
+          collection.appendChild(li);
+        });
+      } catch (error) {
+        M.toast({
+          html: 'No track features uploaded'
+        });
+      }
+    }
+
+    /**
+     * listen to the change of selected user_id for filtering
+     * once the value of selected user_id is changed, fire a new query for tracks
+     */
     filterUser.addEventListener('change', () => {
       console.log('select changed');
       userId = event.target.value;
       queryTracks(userId, minDurationValue, maxDurationValue);
     });
 
+    /**
+     * listen to the change of duration range slider
+     * once the range has been changed, get the duration value of the changed handle
+     * and fire a new query for tracks
+     */
     slider.noUiSlider.on('change', function (values, handle) {
       console.log('on slider change');
+      // depending on which handle is changed, modify the min or max duration value
       if (handle == 0) {
         minDurationValue = values[handle];
       } else {

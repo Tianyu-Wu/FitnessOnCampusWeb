@@ -1,3 +1,4 @@
+/* basic style for map div */
 html,
 body,
 #viewDiv {
@@ -7,20 +8,18 @@ body,
   width: 100%;
 }
 
-#filter {
-  background-color: white;
-  padding: 6px;
-}
-
+/* override the materialize style for label */
 label {
   color: #ffffff !important;
 }
 
+/* basic style for duration slider */
 #duration-slider {
-  margin-top: 15px !important;
-  margin-bottom: 10px !important;
+  margin-top: 15px;
+  margin-bottom: 10px;
 }
 
+/* override the materialize style for dropdown to match with the color theme */
 .select-wrapper span {
   color: #ff7043 !important;
 }
@@ -36,6 +35,7 @@ label {
   color: #ffffff !important;
 }
 
+/* override the nouislider style for duration slider to match with the color theme */
 .noUi-target {
   background: #ffffff !important;
 }
@@ -51,6 +51,7 @@ label {
   background: #ffbf6b !important;
 }
 
+/* basic style for follow-us section */
 .section-follow .fa-4x {
   margin: 5px 10px;
 }
