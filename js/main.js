@@ -13,7 +13,6 @@ const text =
   '{ "name":"Bikes" , "id":"POI5" , "latitude": 47.407856, "longitude": 8.506630} ]}';
 
 const poi = JSON.parse(text).poi;
-console.log('TCL: poi', poi);
 
 require([
   'esri/Map',
@@ -138,7 +137,6 @@ require([
         view.ui.add(legend, 'top-right');
         view.ui.remove(expandLegend);
         view.ui.components = ["attribution", "zoom"];
-        console.log("ui components", view.ui.components);
       }
     }
 
@@ -172,6 +170,8 @@ require([
           };
 
           var queryUserId = fl_tracks.createQuery();
+          // assume that all valid users have duration no less than zero
+          queryUserId.where = 'duration >= 0';
           queryUserId.outStatistics = [minDurationByUser, maxDurationByUser];
           queryUserId.groupByFieldsForStatistics = ['user_id'];
 
@@ -193,7 +193,6 @@ require([
     function getInfo(result) {
       try {
         var features = result.features;
-        console.log('TCL: getUserId -> features', features);
 
         // a list of user_ids
         var userIds = features.map(feature => {
@@ -230,12 +229,12 @@ require([
      */
     function addToFilter(info) {
       console.log('info to filter div');
+
       // the list of user_ids to be added
       var userIds = info[0];
       userIds.sort();
       userIds.forEach(userId => {
         // for each user_id, create an option within the <select></select>
-        console.log('TCL: addToFilter -> userId', userId);
         var option = document.createElement('option');
         // set the text as the user_id
         option.text = userId;
@@ -244,44 +243,30 @@ require([
       });
       // reinitialize the dropdown to show the populated user_id
       M.FormSelect.init(filterUser);
-      console.log('TCL: addToFilter -> filterUser', filterUser);
-      console.log('TCL: addToFilter -> filterUser.value', filterUser.value);
 
       // get the min and max duration from previous result
       var min = info[1];
       var max = info[2];
 
+      // add duration range to slider and populate the min and max value in labels
+      leftLabel.innerHTML = min;
+      rightLabel.innerHTML = max;
 
-      if (!min || !max) {
-        if (!min) {
-          // if min duration is null, set min duration to zero 
-          min = 0;
-        }
-        if (!max) {
-          // if max duration not find, set the maximum value possible
-          max = Number.MAX_VALUE;
-        }
-        // add duration range to slider and populate the min and max value in labels
-        leftLabel.innerHTML = min;
-        rightLabel.innerHTML = max;
-
-        // update the slider to show min and max value
-        // set the start and end of the slider to min and max value
-        slider.noUiSlider.updateOptions({
-          range: {
-            'min': min,
-            'max': max
-          },
-          start: [min, max]
-        });
-        // enable slider
-        slider.removeAttribute('disabled');
-      }
+      // update the slider to show min and max value
+      // set the start and end of the slider to min and max value
+      slider.noUiSlider.updateOptions({
+        range: {
+          'min': min,
+          'max': max
+        },
+        start: [min, max]
+      });
+      // enable slider
+      slider.removeAttribute('disabled');
 
       // get the selected user_id and duration range
       userId = filterUser.value;
       duration = slider.noUiSlider.get();
-      console.log('TCL: addToFilter -> duration', duration);
       minDurationValue = parseInt(duration[0]);
       maxDurationValue = parseInt(duration[1]);
       // query tracks based on the selected conditions
@@ -317,7 +302,6 @@ require([
       }
 
       query.where = where;
-      console.log("TCL: queryTracks -> where", where)
       // query track features with constructed query
       fl_tracks
         .queryFeatures(query)
@@ -338,7 +322,6 @@ require([
             }
           });
 
-          console.log("colorcoded features", features);
           // display queried tracks with speed color-coding style
           displayResult(result);
         })
@@ -690,7 +673,6 @@ require([
         }
       }
 
-      console.log('TCL: queryTrajectories -> sql', sql);
 
       // query trajectories based on constructed sql and render the layer with defined tRenderer
       fl_trajectories.definitionExpression = sql;
@@ -753,6 +735,8 @@ require([
 
     // construct query that calculates the total length and total duration for each user_id
     const statQuery = fl_tracks.createQuery();
+    // assume that all valid users have a duration no less than 0
+    statQuery.where = 'duration >= 0';
     statQuery.outStatistics = [distanceSum, durationSum];
     statQuery.groupByFieldsForStatistics = ['user_id'];
 
